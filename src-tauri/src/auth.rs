@@ -1,0 +1,403 @@
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpListener;
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use rand::RngCore;
+use sha2::{Digest, Sha256};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+// Public client ID. This identifier is not a secret and ships with the app.
+// The Client Secret must never ship here. Auth uses PKCE so no secret is needed.
+pub const CLIENT_ID: &str = "38bf5383c2a84de1a829a91ebd140421";
+// Must match the redirect URI allowlisted in the Spotify dashboard exactly.
+pub const REDIRECT_URI: &str = "http://127.0.0.1:3000";
+const SCOPES: &str =
+    "user-read-playback-state user-read-currently-playing user-modify-playback-state";
+const KEYRING_SERVICE: &str = "spotify-overlay";
+const KEYRING_USER: &str = "refresh-token";
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Tokens {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_at: i64,
+}
+
+#[derive(Default)]
+pub struct AuthState {
+    pub tokens: Mutex<Option<Tokens>>,
+    pub verifier: Mutex<Option<String>>,
+    pub awaiting: Mutex<bool>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct AuthStatus {
+    pub logged_in: bool,
+    pub awaiting_callback: bool,
+}
+
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn new_verifier() -> String {
+    let mut buf = vec![0u8; 64];
+    rand::thread_rng().fill_bytes(&mut buf);
+    URL_SAFE_NO_PAD.encode(buf)
+}
+
+fn challenge_for(verifier: &str) -> String {
+    let digest = Sha256::digest(verifier.as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)
+}
+
+fn save_refresh_token(refresh: &str) {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER);
+    if let Ok(entry) = entry {
+        let _ = entry.set_password(refresh);
+    }
+}
+
+fn load_refresh_token() -> Option<String> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .ok()?
+        .get_password()
+        .ok()
+}
+
+fn clear_refresh_token() {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        let _ = entry.delete_credential();
+    }
+}
+
+#[tauri::command]
+pub async fn auth_status(state: State<'_, AuthState>) -> Result<AuthStatus, String> {
+    let logged_in = state.tokens.lock().map_err(|e| e.to_string())?.is_some();
+    let awaiting = state.awaiting.lock().map_err(|e| e.to_string())?.clone();
+    Ok(AuthStatus {
+        logged_in,
+        awaiting_callback: awaiting,
+    })
+}
+
+#[tauri::command]
+pub async fn start_login(
+    app: AppHandle,
+    state: State<'_, AuthState>,
+) -> Result<String, String> {
+    {
+        let awaiting = state.awaiting.lock().map_err(|e| e.to_string())?;
+        if *awaiting {
+            return Err("Login already in progress. Complete it in the browser.".into());
+        }
+    }
+
+    let verifier = new_verifier();
+    let challenge = challenge_for(&verifier);
+    *state.verifier.lock().map_err(|e| e.to_string())? = Some(verifier);
+    *state.awaiting.lock().map_err(|e| e.to_string())? = true;
+
+    let url = format!(
+        "https://accounts.spotify.com/authorize?client_id={}&response_type=code&redirect_uri={}&scope={}&code_challenge_method=S256&code_challenge={}",
+        CLIENT_ID,
+        url::form_urlencoded::byte_serialize(REDIRECT_URI.as_bytes()).collect::<String>(),
+        url::form_urlencoded::byte_serialize(SCOPES.as_bytes()).collect::<String>(),
+        challenge,
+    );
+
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        wait_for_callback(app_clone);
+    });
+
+    Ok(url)
+}
+
+fn reply_page(stream: &mut std::net::TcpStream, ok: bool, message: &str) {
+    let body = format!(
+        "<!doctype html><html><body style=\"background:#0b0e13;color:#f2f5f9;font-family:sans-serif;display:grid;place-items:center;height:100vh\"><h2>{}</h2><p>{}</p><p>You can close this tab and return to Spotify Overlay.</p></body></html>",
+        if ok { "Connected" } else { "Login failed" },
+        message
+    );
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    let _ = stream.write_all(response.as_bytes());
+}
+
+fn wait_for_callback(app: AppHandle) {
+    let finish = |ok: bool| {
+        if let Some(state) = app.try_state::<AuthState>() {
+            if let Ok(mut awaiting) = state.awaiting.lock() {
+                *awaiting = false;
+            }
+        }
+        let _ = app.emit("auth-changed", ok);
+    };
+
+    let listener = match TcpListener::bind("127.0.0.1:3000") {
+        Ok(l) => l,
+        Err(_) => {
+            let _ = app.emit("auth-error", "Port 3000 is busy. Close what uses it and retry.");
+            finish(false);
+            return;
+        }
+    };
+    if listener.set_nonblocking(false).is_err() {
+        finish(false);
+        return;
+    }
+
+    let (mut stream, _) = match listener.accept() {
+        Ok(s) => s,
+        Err(_) => {
+            finish(false);
+            return;
+        }
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(120)));
+
+    let reader_stream = match stream.try_clone() {
+        Ok(s) => s,
+        Err(_) => {
+            finish(false);
+            return;
+        }
+    };
+    let mut reader = BufReader::new(reader_stream);
+    let mut request_line = String::new();
+    if reader.read_line(&mut request_line).is_err() {
+        finish(false);
+        return;
+    }
+    // Drain headers so the browser does not hang.
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {
+                if line == "\r\n" || line == "\n" {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    let path = request_line
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or("/")
+        .to_string();
+    let full = format!("http://127.0.0.1:3000{}", path);
+    let parsed = match url::Url::parse(&full) {
+        Ok(u) => u,
+        Err(_) => {
+            reply_page(&mut stream, false, "Bad callback URL.");
+            finish(false);
+            return;
+        }
+    };
+
+    if let Some(err) = parsed
+        .query_pairs()
+        .find(|(k, _)| k == "error")
+        .map(|(_, v)| v.to_string())
+    {
+        reply_page(&mut stream, false, &format!("Spotify refused: {err}"));
+        finish(false);
+        return;
+    }
+
+    let code = parsed
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.to_string());
+    let code = match code {
+        Some(c) => c,
+        None => {
+            reply_page(&mut stream, false, "No code in callback.");
+            finish(false);
+            return;
+        }
+    };
+
+    let verifier: Option<String> = match app.try_state::<AuthState>() {
+        Some(s) => match s.verifier.lock() {
+            Ok(g) => (*g).clone(),
+            Err(_) => None,
+        },
+        None => None,
+    };
+
+    let verifier = match verifier {
+        Some(v) => v,
+        None => {
+            reply_page(&mut stream, false, "Login session expired. Start again.");
+            finish(false);
+            return;
+        }
+    };
+
+    let token = tauri::async_runtime::block_on(exchange_code(&code, &verifier));
+    match token {
+        Ok(t) => {
+            if let Some(state) = app.try_state::<AuthState>() {
+                if let Ok(mut tokens) = state.tokens.lock() {
+                    *tokens = Some(t.clone());
+                }
+                if let Ok(mut v) = state.verifier.lock() {
+                    *v = None;
+                }
+            }
+            if let Some(refresh) = t.refresh_token.clone() {
+                save_refresh_token(&refresh);
+            }
+            reply_page(&mut stream, true, "Spotify is connected.");
+            finish(true);
+        }
+        Err(e) => {
+            reply_page(&mut stream, false, &format!("Token exchange failed: {e}"));
+            finish(false);
+        }
+    }
+}
+
+async fn exchange_code(code: &str, verifier: &str) -> Result<Tokens, String> {
+    let client = reqwest::Client::new();
+    let params = [
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("redirect_uri", REDIRECT_URI),
+        ("client_id", CLIENT_ID),
+        ("code_verifier", verifier),
+    ];
+    let res = client
+        .post("https://accounts.spotify.com/api/token")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("token endpoint: {body}"));
+    }
+    let body: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    Ok(Tokens {
+        access_token: body
+            .get("access_token")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        refresh_token: body
+            .get("refresh_token")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        expires_at: now_unix() + body.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(3600),
+    })
+}
+
+async fn refresh_tokens(refresh: &str) -> Result<Tokens, String> {
+    let client = reqwest::Client::new();
+    let params = [
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh),
+        ("client_id", CLIENT_ID),
+    ];
+    let res = client
+        .post("https://accounts.spotify.com/api/token")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("refresh failed: {body}"));
+    }
+    let body: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    let new_refresh = body
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| refresh.to_string());
+    save_refresh_token(&new_refresh);
+    Ok(Tokens {
+        access_token: body
+            .get("access_token")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        refresh_token: Some(new_refresh),
+        expires_at: now_unix() + body.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(3600),
+    })
+}
+
+/// Returns a valid access token, refreshing silently when expired.
+pub async fn access_token(app: &AppHandle) -> Result<String, String> {
+    let state = app
+        .try_state::<AuthState>()
+        .ok_or("auth state missing")?;
+
+    let needs_refresh = {
+        let tokens = state.tokens.lock().map_err(|e| e.to_string())?;
+        match tokens.clone() {
+            Some(t) => t.expires_at - 60 <= now_unix() || t.access_token.is_empty(),
+            None => true,
+        }
+    };
+
+    if needs_refresh {
+        let refresh = {
+            let tokens = state.tokens.lock().map_err(|e| e.to_string())?;
+            tokens.clone().and_then(|t| t.refresh_token.clone())
+        }
+        .or_else(load_refresh_token)
+        .ok_or("Not logged in. Start login first.")?;
+        let fresh = refresh_tokens(&refresh).await?;
+        let token = fresh.access_token.clone();
+        if let Ok(mut tokens) = state.tokens.lock() {
+            *tokens = Some(fresh);
+        }
+        let _ = app.emit("auth-changed", true);
+        return Ok(token);
+    }
+
+    let tokens = state.tokens.lock().map_err(|e| e.to_string())?;
+    tokens
+        .clone()
+        .map(|t| t.access_token)
+        .ok_or_else(|| "Not logged in. Start login first.".to_string())
+}
+
+/// Best-effort restore of a saved session at startup.
+pub fn restore_session(app: &AppHandle) {
+    if let Some(refresh) = load_refresh_token() {
+        if let Some(state) = app.try_state::<AuthState>() {
+            if let Ok(mut tokens) = state.tokens.lock() {
+                *tokens = Some(Tokens {
+                    access_token: String::new(),
+                    refresh_token: Some(refresh),
+                    expires_at: 0,
+                });
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn logout(app: AppHandle, state: State<'_, AuthState>) -> Result<(), String> {
+    *state.tokens.lock().map_err(|e| e.to_string())? = None;
+    *state.verifier.lock().map_err(|e| e.to_string())? = None;
+    *state.awaiting.lock().map_err(|e| e.to_string())? = false;
+    clear_refresh_token();
+    let _ = app.emit("auth-changed", false);
+    Ok(())
+}
