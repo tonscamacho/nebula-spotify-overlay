@@ -7,6 +7,15 @@ import PlayerPane from "./components/PlayerPane";
 import LyricsPane from "./components/LyricsPane";
 import QueuePane from "./components/QueuePane";
 import SettingsModal from "./components/SettingsModal";
+import {
+  ListIcon,
+  LockIcon,
+  MinusIcon,
+  NoteIcon,
+  SlidersIcon,
+  UnlockIcon,
+  XIcon,
+} from "./components/icons";
 import { api, parsePlayer } from "./lib/spotify";
 import { PRESETS, defaultLayout, loadLayout, saveLayout, snapPane } from "./lib/layout";
 import type {
@@ -371,8 +380,8 @@ export default function App() {
           data-tauri-drag-region={editMode ? undefined : true}
           onPointerDown={(e) => onHandleDown(e, pane.id)}
         >
-          <span className="dot" />
-          <span>{title}</span>
+          <span className="pane-title">{title}</span>
+          {editMode && <span className="grip" aria-hidden="true" />}
         </header>
         {pane.type === "player" && (
           <PlayerPane
@@ -425,23 +434,53 @@ export default function App() {
     <div className="app" style={{ ["--pop" as string]: opacity }}>
       <div className="nebula" aria-hidden="true" />
       <div className="topbar" data-tauri-drag-region>
-        <span className="brand">Nebula Overlay</span>
-        <span className={`lock ${locked ? "is-locked" : ""}`}>{locked ? "Locked" : "Edit"}</span>
+        <span className="brand">Nebula</span>
+        <span className="divider" aria-hidden="true" />
+        <span className="preset-name">{layout.preset}</span>
+        <span className={`lock${locked ? " is-locked" : ""}`}>
+          <i aria-hidden="true" />
+          {locked ? "Locked" : "Edit"}
+        </span>
         <div className="top-actions">
-          <button className="tbtn" onClick={() => setEditMode((v) => !v)} title="Toggle edit (Ctrl+Alt+E)">
-            {locked ? "🔓" : "🔒"}
+          <button
+            className="tbtn"
+            onClick={() => setEditMode((v) => !v)}
+            title="Toggle edit (Ctrl+Alt+E)"
+            aria-label="Toggle edit mode"
+          >
+            {locked ? <UnlockIcon size={15} /> : <LockIcon size={15} />}
           </button>
-          <button className="tbtn" onClick={cyclePreset} title="Cycle preset (Ctrl+Alt+L)">
-            ◧
+          <button
+            className="tbtn"
+            onClick={cyclePreset}
+            title="Cycle preset (Ctrl+Alt+L)"
+            aria-label="Cycle preset"
+          >
+            <ListIcon size={15} />
           </button>
-          <button className="tbtn" onClick={() => setSettingsOpen(true)} title="Settings">
-            ⚙
+          <button
+            className="tbtn"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+            aria-label="Open settings"
+          >
+            <SlidersIcon size={15} />
           </button>
-          <button className="tbtn" onClick={() => void getCurrentWindow().minimize()} title="Minimize">
-            _
+          <button
+            className="tbtn"
+            onClick={() => void getCurrentWindow().minimize()}
+            title="Minimize"
+            aria-label="Minimize"
+          >
+            <MinusIcon size={15} />
           </button>
-          <button className="tbtn" onClick={() => void getCurrentWindow().close()} title="Close">
-            ✕
+          <button
+            className="tbtn"
+            onClick={() => void getCurrentWindow().close()}
+            title="Close"
+            aria-label="Close"
+          >
+            <XIcon size={15} />
           </button>
         </div>
       </div>
@@ -449,6 +488,9 @@ export default function App() {
       {!loggedIn ? (
         <div className="gate">
           <div className="pane gate-card">
+            <div className="gate-icon">
+              <NoteIcon size={26} />
+            </div>
             <h1>Connect Spotify</h1>
             <p>Login opens your browser, then returns here. Premium unlocks control.</p>
             <button className="btn primary" onClick={() => void login()} disabled={awaitingAuth}>

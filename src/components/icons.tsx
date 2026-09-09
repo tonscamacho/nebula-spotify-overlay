@@ -1,0 +1,170 @@
+import type { ReactNode } from "react";
+
+interface IconProps {
+  size?: number;
+  className?: string;
+}
+
+function Base({
+  size = 16,
+  className,
+  children,
+}: IconProps & { children: ReactNode }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+export const PlayIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M7.5 4.8v14.4L19.5 12z" fill="currentColor" stroke="none" />
+  </Base>
+);
+
+export const PauseIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="6.2" y="4.8" width="3.9" height="14.4" rx="1.3" fill="currentColor" stroke="none" />
+    <rect x="13.9" y="4.8" width="3.9" height="14.4" rx="1.3" fill="currentColor" stroke="none" />
+  </Base>
+);
+
+export const NextIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4.5 5.8v12.4L13.5 12z" fill="currentColor" stroke="none" />
+    <rect x="16" y="5.8" width="2.7" height="12.4" rx="1" fill="currentColor" stroke="none" />
+  </Base>
+);
+
+export const PrevIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M19.5 5.8v12.4L10.5 12z" fill="currentColor" stroke="none" />
+    <rect x="5.3" y="5.8" width="2.7" height="12.4" rx="1" fill="currentColor" stroke="none" />
+  </Base>
+);
+
+export const ShuffleIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M16 3.5h4.5V8" />
+    <path d="M4 20 20.5 3.5" />
+    <path d="M20.5 15.5V20H16" />
+    <path d="m14.5 14.5 6 6" />
+    <path d="M4 4l4.5 4.5" />
+  </Base>
+);
+
+export const RepeatIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="m17 2.5 3.5 3.5L17 9.5" />
+    <path d="M3.5 11V10a4 4 0 0 1 4-4h13" />
+    <path d="m7 21.5-3.5-3.5L7 14.5" />
+    <path d="M20.5 13v1a4 4 0 0 1-4 4h-13" />
+  </Base>
+);
+
+export const RepeatOneIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="m17 2.5 3.5 3.5L17 9.5" />
+    <path d="M3.5 11V10a4 4 0 0 1 4-4h13" />
+    <path d="m7 21.5-3.5-3.5L7 14.5" />
+    <path d="M20.5 13v1a4 4 0 0 1-4 4h-13" />
+    <text
+      x="12"
+      y="16.4"
+      textAnchor="middle"
+      fontSize="8"
+      fontWeight="700"
+      fill="currentColor"
+      stroke="none"
+    >
+      1
+    </text>
+  </Base>
+);
+
+export const VolumeIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M11 5 6.5 9H3v6h3.5L11 19z" />
+    <path d="M15 9a4.2 4.2 0 0 1 0 6" />
+    <path d="M17.8 6.4a8 8 0 0 1 0 11.2" />
+  </Base>
+);
+
+export const LockIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+    <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+  </Base>
+);
+
+export const UnlockIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+    <path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7" />
+  </Base>
+);
+
+export const SlidersIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M20.5 4h-6" />
+    <path d="M9.5 4H3.5" />
+    <path d="M20.5 12h-8" />
+    <path d="M7.5 12h-4" />
+    <path d="M20.5 20h-4" />
+    <path d="M11.5 20h-8" />
+    <path d="M14.5 2v4" />
+    <path d="M7.5 10v4" />
+    <path d="M16.5 18v4" />
+  </Base>
+);
+
+export const MinusIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M5 12h14" />
+  </Base>
+);
+
+export const XIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M17.5 6.5 6.5 17.5" />
+    <path d="m6.5 6.5 11 11" />
+  </Base>
+);
+
+export const NoteIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M9.5 17.5V5.5L20.5 3.5v13" />
+    <circle cx="6.8" cy="17.5" r="2.7" />
+    <circle cx="17.8" cy="16.5" r="2.7" />
+  </Base>
+);
+
+export const ListIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M8.5 6.5h12" />
+    <path d="M8.5 12h12" />
+    <path d="M8.5 17.5h12" />
+    <path d="M4 6.5h.01" />
+    <path d="M4 12h.01" />
+    <path d="M4 17.5h.01" />
+  </Base>
+);
+
+export const RefreshIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6" />
+    <path d="M20.5 3.5V8H16" />
+  </Base>
+);

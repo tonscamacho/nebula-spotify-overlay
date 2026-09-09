@@ -1,3 +1,5 @@
+import { XIcon } from "./icons";
+
 interface Props {
   open: boolean;
   loggedIn: boolean;
@@ -23,8 +25,8 @@ export default function SettingsModal(p: Props) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <span>Settings</span>
-          <button className="chip" onClick={p.onClose} aria-label="Close settings">
-            ✕
+          <button className="icon-btn sm" onClick={p.onClose} aria-label="Close settings">
+            <XIcon size={14} />
           </button>
         </div>
         <label className="row">

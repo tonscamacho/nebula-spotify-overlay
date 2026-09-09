@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { LyricsState } from "../lib/types";
 import { activeCueIndex } from "../lib/lrc";
+import { NoteIcon } from "./icons";
 
 interface Props {
   lyrics: LyricsState;
@@ -8,6 +9,15 @@ interface Props {
   clickToSeek: boolean;
   onSeek: (ms: number) => void;
   onRetry: () => void;
+}
+
+function Meta({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="lyrics-meta">
+      <NoteIcon size={11} />
+      <span>{children}</span>
+    </div>
+  );
 }
 
 export default function LyricsPane(p: Props) {
@@ -70,7 +80,10 @@ export default function LyricsPane(p: Props) {
     return (
       <div className="pane-body">
         <div className="empty">
-          <div className="empty-title">♪ Instrumental</div>
+          <div className="empty-icon">
+            <NoteIcon size={22} />
+          </div>
+          <div className="empty-title">Instrumental</div>
           <div className="empty-sub">No words in this one.</div>
         </div>
       </div>
@@ -79,14 +92,14 @@ export default function LyricsPane(p: Props) {
   if (!d.synced) {
     return (
       <div className="pane-body">
-        <div className="lyrics-meta">Unsynced{d.cached ? " • cached" : ""}</div>
+        <Meta>Unsynced{d.cached ? " · Cached" : ""}</Meta>
         <div className="plain">{d.plain ?? "Lyrics text unavailable."}</div>
       </div>
     );
   }
   return (
     <div className="pane-body">
-      <div className="lyrics-meta">♪ Synced{d.cached ? " • cached" : ""}</div>
+      <Meta>Synced{d.cached ? " · Cached" : ""}</Meta>
       <div className="lyrics">
         {d.cues.map((c, i) => (
           <div
@@ -96,7 +109,7 @@ export default function LyricsPane(p: Props) {
             onClick={p.clickToSeek ? () => p.onSeek(c.t) : undefined}
             title={p.clickToSeek ? "Seek to this line" : undefined}
           >
-            {c.text === "" ? "· · ·" : c.text}
+            {c.text === "" ? "···" : c.text}
           </div>
         ))}
       </div>
