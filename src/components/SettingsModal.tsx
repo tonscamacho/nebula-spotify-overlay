@@ -6,11 +6,15 @@ interface Props {
   preset: string;
   opacity: number;
   uiScale: number;
+  theme: "dark" | "light";
+  autostart: boolean;
   clickThrough: boolean;
   clickToSeek: boolean;
   onPreset: (name: string) => void;
   onOpacity: (v: number) => void;
   onUiScale: (v: number) => void;
+  onTheme: (v: "dark" | "light") => void;
+  onAutostart: (v: boolean) => void;
   onClickThrough: (v: boolean) => void;
   onClickToSeek: (v: boolean) => void;
   onResetLayout: () => void;
@@ -38,6 +42,20 @@ export default function SettingsModal(p: Props) {
           ) : (
             <span className="dim">Logged out</span>
           )}
+        </label>
+        <label className="row">
+          <span>Theme</span>
+          <span className="seg">
+            {(["dark", "light"] as const).map((n) => (
+              <button
+                key={n}
+                className={p.theme === n ? "seg-on" : ""}
+                onClick={() => p.onTheme(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </span>
         </label>
         <label className="row">
           <span>Preset</span>
@@ -71,6 +89,14 @@ export default function SettingsModal(p: Props) {
             max={130}
             value={Math.round(p.uiScale * 100)}
             onChange={(e) => p.onUiScale(Number(e.target.value) / 100)}
+          />
+        </label>
+        <label className="row">
+          <span>Launch on login</span>
+          <input
+            type="checkbox"
+            checked={p.autostart}
+            onChange={(e) => p.onAutostart(e.target.checked)}
           />
         </label>
         <label className="row">

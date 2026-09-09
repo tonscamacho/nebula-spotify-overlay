@@ -64,6 +64,14 @@ export default function App() {
   const [uiScale, setUiScale] = useState(1);
   const [clickThrough, setClickThrough] = useState(false);
   const [clickToSeek, setClickToSeek] = useState(true);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      return localStorage.getItem("nebula-theme") === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+  const [autostart, setAutostart] = useState(false);
 
   const trackIdRef = useRef<string | null>(null);
   const snapRef = useRef<PlayerSnapshot>(EMPTY_SNAP);
@@ -161,6 +169,7 @@ export default function App() {
   // Boot: layout, auth, listeners.
   useEffect(() => {
     setLayout(loadLayout());
+    invoke<boolean>("autostart_state").then(setAutostart).catch(() => {});
     void refreshAuth().then((ok) => {
       if (ok) {
         void fetchPlayer();
@@ -472,7 +481,7 @@ export default function App() {
   };
 
   return (
-    <div className="app" style={{ ["--pop" as string]: opacity }}>
+    <div className="app" data-theme={theme} style={{ ["--pop" as string]: opacity }}>
       <div className="nebula" aria-hidden="true" />
       <div className="topbar" data-tauri-drag-region>
         <span className="brand">Nebula</span>
@@ -556,11 +565,28 @@ export default function App() {
         preset={layout.preset}
         opacity={opacity}
         uiScale={uiScale}
+        theme={theme}
+        autostart={autostart}
         clickThrough={clickThrough}
         clickToSeek={clickToSeek}
         onPreset={applyPreset}
         onOpacity={setOpacity}
         onUiScale={setUiScale}
+        onTheme={(v) => {
+          setTheme(v);
+          try {
+            localStorage.setItem("nebula-theme", v);
+          } catch {
+            // Private mode. Theme lasts the session.
+          }
+        }}
+        onAutostart={(v) => {
+          setAutostart(v);
+          invoke("set_autostart", { enabled: v }).catch((e) => {
+            setAutostart(!v);
+            flashErr(e instanceof Error ? e.message : String(e));
+          });
+        }}
         onClickThrough={setClickThrough}
         onClickToSeek={setClickToSeek}
         onResetLayout={() => {

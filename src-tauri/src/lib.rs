@@ -1,6 +1,7 @@
 mod auth;
 mod lyrics;
 mod spotify;
+mod system;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -99,6 +100,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -149,6 +154,8 @@ pub fn run() {
             spotify::transfer_playback,
             spotify::add_to_queue,
             lyrics::get_lyrics,
+            system::autostart_state,
+            system::set_autostart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
