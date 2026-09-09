@@ -18,6 +18,7 @@ src-tauri/target
 # Local-only working files, never commit
 PRODUCT.md
 mock/
+.agents/
 
 # Editor directories and files
 .vscode/*

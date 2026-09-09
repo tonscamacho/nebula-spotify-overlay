@@ -289,6 +289,43 @@ fn value_to_entry(track_id: &str, duration_ms: i64, v: &serde_json::Value) -> Ca
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::parse_lrc;
+
+    #[test]
+    fn parses_basic_lines_in_order() {
+        let cues = parse_lrc("[00:12.00]first\n[00:05.50]second\n");
+        assert_eq!(cues.len(), 2);
+        assert_eq!(cues[0].t, 5_500);
+        assert_eq!(cues[0].text, "second");
+        assert_eq!(cues[1].t, 12_000);
+    }
+
+    #[test]
+    fn expands_multi_tag_lines_and_applies_offset() {
+        let cues = parse_lrc("[offset:+500]\n[00:10.00][00:20.000]chorus\n");
+        assert_eq!(cues.len(), 2);
+        assert_eq!(cues[0].t, 10_500);
+        assert_eq!(cues[1].t, 20_500);
+        assert_eq!(cues[1].text, "chorus");
+    }
+
+    #[test]
+    fn drops_id_tags_and_malformed_lines() {
+        let cues = parse_lrc("[ti:Title]\n[ar:Artist]\nno tags here\n[99]bad\n[00:01.00]ok\n");
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].text, "ok");
+    }
+
+    #[test]
+    fn keeps_empty_text_as_gap() {
+        let cues = parse_lrc("[00:01.00]\n[00:02.00]words\n");
+        assert_eq!(cues.len(), 2);
+        assert_eq!(cues[0].text, "");
+    }
+}
+
 #[tauri::command]
 pub async fn get_lyrics(
     app: AppHandle,

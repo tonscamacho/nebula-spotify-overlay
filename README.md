@@ -73,11 +73,23 @@ src/
 
 ## Shortcuts
 
-| Keys         | Action              |
-| ------------ | ------------------- |
-| Ctrl+Alt+E   | Toggle edit lock    |
-| Ctrl+Alt+L   | Cycle preset        |
-| Ctrl+Alt+C   | Toggle click-through |
+Global — work over games and fullscreen apps:
+
+| Keys       | Action              |
+| ---------- | ------------------- |
+| Ctrl+Alt+P | Play / Pause        |
+| Ctrl+Alt+N | Next track          |
+| Ctrl+Alt+O | Show / Hide overlay |
+| Ctrl+Alt+E | Toggle edit lock    |
+
+In-window — the overlay must be focused:
+
+| Keys       | Action              |
+| ---------- | ------------------- |
+| Ctrl+Alt+L | Cycle preset        |
+| Ctrl+Alt+C | Toggle click-through |
+
+The tray icon (left-click toggles, right-click opens Show/Hide, edit lock, preset, settings, quit) is the way back when the window is hidden.
 
 Click-through passes mouse events to windows below. Refocus the overlay from the taskbar and press Ctrl+Alt+C to exit it.
 

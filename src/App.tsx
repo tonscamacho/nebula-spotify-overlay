@@ -66,6 +66,11 @@ export default function App() {
   const [clickToSeek, setClickToSeek] = useState(true);
 
   const trackIdRef = useRef<string | null>(null);
+  const snapRef = useRef<PlayerSnapshot>(EMPTY_SNAP);
+
+  useEffect(() => {
+    snapRef.current = snap;
+  }, [snap]);
   const dragRef = useRef<{
     id: string;
     mode: "move" | "resize";
@@ -231,6 +236,20 @@ export default function App() {
       } else if (k === "c") {
         e.preventDefault();
         setClickThrough((v) => !v);
+      } else if (k === "p") {
+        e.preventDefault();
+        const s = snapRef.current;
+        if (s.track) {
+          void run(s.isPlaying ? () => api.pause(s.deviceId) : () => api.play(s.deviceId));
+        }
+      } else if (k === "n") {
+        e.preventDefault();
+        if (snapRef.current.track) {
+          void run(() => api.next(snapRef.current.deviceId));
+        }
+      } else if (k === "o") {
+        e.preventDefault();
+        void getCurrentWindow().hide();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -287,6 +306,28 @@ export default function App() {
     saveLayout(nl);
     setLayout(nl);
   }, []);
+
+  // Tray menu + global shortcuts arrive as events from Rust.
+  useEffect(() => {
+    const offPlay = listen("shortcut-playpause", () => {
+      const s = snapRef.current;
+      if (!s.track) return;
+      void run(s.isPlaying ? () => api.pause(s.deviceId) : () => api.play(s.deviceId));
+    });
+    const offNext = listen("shortcut-next", () => {
+      const s = snapRef.current;
+      if (!s.track) return;
+      void run(() => api.next(s.deviceId));
+    });
+    const offEdit = listen("shortcut-edit", () => setEditMode((v) => !v));
+    const offTrayEdit = listen("tray-toggle-edit", () => setEditMode((v) => !v));
+    const offTrayPreset = listen("tray-cycle-preset", () => cyclePreset());
+    const offTraySettings = listen("tray-open-settings", () => setSettingsOpen(true));
+    const all = [offPlay, offNext, offEdit, offTrayEdit, offTrayPreset, offTraySettings];
+    return () => {
+      for (const off of all) void off.then((f) => f());
+    };
+  }, [run, cyclePreset]);
 
   // Pane drag + resize.
   const onHandleDown = (e: React.PointerEvent, id: string) => {

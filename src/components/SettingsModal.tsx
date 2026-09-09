@@ -99,7 +99,33 @@ export default function SettingsModal(p: Props) {
             Reset
           </button>
         </label>
-        <div className="hint">Shortcuts: Ctrl+Alt+E lock, Ctrl+Alt+L preset, Ctrl+Alt+C click-through.</div>
+        <div className="hint">Shortcuts work everywhere, even over a game:</div>
+        <div className="keys">
+          <div>
+            <span>Play / Pause</span>
+            <span className="kbd">Ctrl+Alt+P</span>
+          </div>
+          <div>
+            <span>Next track</span>
+            <span className="kbd">Ctrl+Alt+N</span>
+          </div>
+          <div>
+            <span>Show / Hide overlay</span>
+            <span className="kbd">Ctrl+Alt+O</span>
+          </div>
+          <div>
+            <span>Edit lock</span>
+            <span className="kbd">Ctrl+Alt+E</span>
+          </div>
+          <div>
+            <span>Cycle preset (window focused)</span>
+            <span className="kbd">Ctrl+Alt+L</span>
+          </div>
+          <div>
+            <span>Click-through (window focused)</span>
+            <span className="kbd">Ctrl+Alt+C</span>
+          </div>
+        </div>
       </div>
     </div>
   );
