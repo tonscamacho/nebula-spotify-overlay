@@ -174,7 +174,7 @@ async fn lrclib_get(
     duration_secs: i64,
 ) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::builder()
-        .user_agent("spotify-overlay/0.1.0 (desktop overlay)")
+        .user_agent("snapify-overlay/1.0.0 (desktop overlay)")
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?;
@@ -208,7 +208,7 @@ async fn lrclib_search(
     duration_ms: i64,
 ) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::builder()
-        .user_agent("spotify-overlay/0.1.0 (desktop overlay)")
+        .user_agent("snapify-overlay/1.0.0 (desktop overlay)")
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?;

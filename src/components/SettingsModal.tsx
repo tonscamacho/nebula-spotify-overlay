@@ -1,3 +1,4 @@
+import { TRANS_LANGS, type TransLang } from "../lib/translate";
 import { XIcon } from "./icons";
 
 interface Props {
@@ -7,16 +8,22 @@ interface Props {
   opacity: number;
   uiScale: number;
   theme: "dark" | "light";
+  ambientTint: boolean;
   autostart: boolean;
   clickThrough: boolean;
   clickToSeek: boolean;
+  wordKaraoke: boolean;
+  transLang: TransLang;
   onPreset: (name: string) => void;
   onOpacity: (v: number) => void;
   onUiScale: (v: number) => void;
   onTheme: (v: "dark" | "light") => void;
+  onAmbientTint: (v: boolean) => void;
   onAutostart: (v: boolean) => void;
   onClickThrough: (v: boolean) => void;
   onClickToSeek: (v: boolean) => void;
+  onWordKaraoke: (v: boolean) => void;
+  onTransLang: (v: TransLang) => void;
   onResetLayout: () => void;
   onLogout: () => void;
   onClose: () => void;
@@ -58,9 +65,17 @@ export default function SettingsModal(p: Props) {
           </span>
         </label>
         <label className="row">
+          <span>Album-art tint</span>
+          <input
+            type="checkbox"
+            checked={p.ambientTint}
+            onChange={(e) => p.onAmbientTint(e.target.checked)}
+          />
+        </label>
+        <label className="row">
           <span>Preset</span>
           <span className="seg">
-            {(["minimal", "full", "lyrics"] as const).map((n) => (
+            {(["minimal", "full", "lyrics", "spotlight"] as const).map((n) => (
               <button
                 key={n}
                 className={p.preset === n ? "seg-on" : ""}
@@ -119,6 +134,34 @@ export default function SettingsModal(p: Props) {
             onChange={(e) => p.onClickToSeek(e.target.checked)}
           />
         </label>
+        <label className="row">
+          <span>Word-by-word karaoke</span>
+          <input
+            type="checkbox"
+            checked={p.wordKaraoke}
+            onChange={(e) => p.onWordKaraoke(e.target.checked)}
+          />
+        </label>
+        <label className="row">
+          <span>Lyric translation</span>
+          <select
+            className="device"
+            style={{ flex: "none" }}
+            value={p.transLang}
+            aria-label="Lyric translation language"
+            onChange={(e) => p.onTransLang(e.target.value as TransLang)}
+          >
+            {TRANS_LANGS.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="hint">
+          Translations come from English via a free service, are cached per line, and
+          stay silent when offline.
+        </div>
         <label className="row">
           <span>Layout</span>
           <button className="btn sm" onClick={p.onResetLayout}>

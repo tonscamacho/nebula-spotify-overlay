@@ -1,4 +1,4 @@
-export type PaneType = "player" | "lyrics" | "queue";
+export type PaneType = "player" | "lyrics" | "queue" | "visualizer";
 
 export interface PaneState {
   id: string;
@@ -12,7 +12,7 @@ export interface PaneState {
 }
 
 export interface LayoutState {
-  version: 1;
+  version: 2;
   preset: string;
   panes: PaneState[];
 }

@@ -6,6 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import PlayerPane from "./components/PlayerPane";
 import LyricsPane from "./components/LyricsPane";
 import QueuePane from "./components/QueuePane";
+import VisualizerPane from "./components/VisualizerPane";
 import SettingsModal from "./components/SettingsModal";
 import {
   ListIcon,
@@ -17,6 +18,7 @@ import {
   XIcon,
 } from "./components/icons";
 import { api, parsePlayer } from "./lib/spotify";
+import type { TransLang } from "./lib/translate";
 import { PRESETS, defaultLayout, loadLayout, saveLayout, snapPane } from "./lib/layout";
 import type {
   DeviceInfo,
@@ -40,7 +42,7 @@ const EMPTY_SNAP: PlayerSnapshot = {
   repeat: "off",
 };
 
-const PRESET_ORDER = ["minimal", "full", "lyrics"];
+const PRESET_ORDER = ["minimal", "full", "lyrics", "spotlight"];
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -64,11 +66,38 @@ export default function App() {
   const [uiScale, setUiScale] = useState(1);
   const [clickThrough, setClickThrough] = useState(false);
   const [clickToSeek, setClickToSeek] = useState(true);
+  const [wordKaraoke, setWordKaraoke] = useState(() => {
+    try {
+      return localStorage.getItem("snapify-karaoke") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [transLang, setTransLang] = useState<TransLang>(() => {
+    try {
+      const v = localStorage.getItem("snapify-translang");
+      return v === "es" || v === "fr" || v === "de" || v === "pt" || v === "ja"
+        ? v
+        : "off";
+    } catch {
+      return "off";
+    }
+  });
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try {
-      return localStorage.getItem("nebula-theme") === "light" ? "light" : "dark";
+      return localStorage.getItem("snapify-theme") === "light" ||
+        localStorage.getItem("nebula-theme") === "light"
+        ? "light"
+        : "dark";
     } catch {
       return "dark";
+    }
+  });
+  const [ambientTint, setAmbientTint] = useState(() => {
+    try {
+      return localStorage.getItem("snapify-ambient") !== "0";
+    } catch {
+      return true;
     }
   });
   const [autostart, setAutostart] = useState(false);
@@ -196,16 +225,28 @@ export default function App() {
     };
   }, [refreshAuth, fetchPlayer, fetchDevices, fetchQueue, flashErr]);
 
-  // Player poll every 3 s while logged in.
+  // Player poll every 3 s while logged in. Skipped while the window is
+  // hidden so a background overlay holds no CPU or network budget.
   useEffect(() => {
     if (!loggedIn) return;
-    const t = window.setInterval(fetchPlayer, 3000);
-    return () => window.clearInterval(t);
+    const t = window.setInterval(() => {
+      if (!document.hidden) void fetchPlayer();
+    }, 3000);
+    const onVis = () => {
+      if (!document.hidden) void fetchPlayer();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [loggedIn, fetchPlayer]);
 
-  // Interpolation tick for progress and lyric sync.
+  // Interpolation tick for progress and lyric sync. Paused while hidden.
   useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 500);
+    const t = window.setInterval(() => {
+      if (!document.hidden) setNow(Date.now());
+    }, 500);
     return () => window.clearInterval(t);
   }, []);
 
@@ -418,7 +459,14 @@ export default function App() {
 
   const renderPane = (pane: PaneState) => {
     if (!pane.visible) return null;
-    const title = pane.type === "player" ? "Player" : pane.type === "lyrics" ? "Lyrics" : "Queue";
+    const title =
+      pane.type === "player"
+        ? "Player"
+        : pane.type === "lyrics"
+          ? "Lyrics"
+          : pane.type === "visualizer"
+            ? "Visualizer"
+            : "Queue";
     return (
       <section
         key={pane.id}
@@ -439,6 +487,7 @@ export default function App() {
             devices={devices}
             progressMs={progressMs}
             busy={busy}
+            ambientOn={ambientTint}
             onPlay={() => void run(() => api.play(snap.deviceId))}
             onPause={() => void run(() => api.pause(snap.deviceId))}
             onNext={() => void run(() => api.next(snap.deviceId))}
@@ -463,6 +512,8 @@ export default function App() {
             lyrics={lyrics}
             positionMs={progressMs}
             clickToSeek={clickToSeek}
+            wordKaraoke={wordKaraoke}
+            transLang={transLang}
             onSeek={(ms) => void run(() => api.seek(ms, snap.deviceId))}
             onRetry={() => trackIdRef.current && void fetchLyrics(trackIdRef.current)}
           />
@@ -475,6 +526,9 @@ export default function App() {
             onRefresh={() => void fetchQueue()}
           />
         )}
+        {pane.type === "visualizer" && (
+          <VisualizerPane isPlaying={snap.isPlaying} seed={snap.track?.id ?? null} />
+        )}
         {editMode && <div className="resize" onPointerDown={(e) => onResizeDown(e, pane.id)} />}
       </section>
     );
@@ -484,7 +538,7 @@ export default function App() {
     <div className="app" data-theme={theme} style={{ ["--pop" as string]: opacity }}>
       <div className="nebula" aria-hidden="true" />
       <div className="topbar" data-tauri-drag-region>
-        <span className="brand">Nebula</span>
+        <span className="brand">Snapify</span>
         <span className="divider" aria-hidden="true" />
         <span className="preset-name">{layout.preset}</span>
         <span className={`lock${locked ? " is-locked" : ""}`}>
@@ -566,18 +620,29 @@ export default function App() {
         opacity={opacity}
         uiScale={uiScale}
         theme={theme}
+        ambientTint={ambientTint}
         autostart={autostart}
         clickThrough={clickThrough}
         clickToSeek={clickToSeek}
+        wordKaraoke={wordKaraoke}
+        transLang={transLang}
         onPreset={applyPreset}
         onOpacity={setOpacity}
         onUiScale={setUiScale}
         onTheme={(v) => {
           setTheme(v);
           try {
-            localStorage.setItem("nebula-theme", v);
+            localStorage.setItem("snapify-theme", v);
           } catch {
             // Private mode. Theme lasts the session.
+          }
+        }}
+        onAmbientTint={(v) => {
+          setAmbientTint(v);
+          try {
+            localStorage.setItem("snapify-ambient", v ? "1" : "0");
+          } catch {
+            // Private mode. Choice lasts the session.
           }
         }}
         onAutostart={(v) => {
@@ -589,6 +654,22 @@ export default function App() {
         }}
         onClickThrough={setClickThrough}
         onClickToSeek={setClickToSeek}
+        onWordKaraoke={(v) => {
+          setWordKaraoke(v);
+          try {
+            localStorage.setItem("snapify-karaoke", v ? "1" : "0");
+          } catch {
+            // Private mode. Choice lasts the session.
+          }
+        }}
+        onTransLang={(v) => {
+          setTransLang(v);
+          try {
+            localStorage.setItem("snapify-translang", v);
+          } catch {
+            // Private mode. Choice lasts the session.
+          }
+        }}
         onResetLayout={() => {
           const nl = PRESETS[layout.preset] ? PRESETS[layout.preset]() : defaultLayout();
           saveLayout(nl);

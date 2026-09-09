@@ -80,17 +80,7 @@ export const RepeatOneIcon = (p: IconProps) => (
     <path d="M3.5 11V10a4 4 0 0 1 4-4h13" />
     <path d="m7 21.5-3.5-3.5L7 14.5" />
     <path d="M20.5 13v1a4 4 0 0 1-4 4h-13" />
-    <text
-      x="12"
-      y="16.4"
-      textAnchor="middle"
-      fontSize="8"
-      fontWeight="700"
-      fill="currentColor"
-      stroke="none"
-    >
-      1
-    </text>
+    <path d="M10.9 11 12.2 10v4" />
   </Base>
 );
 
@@ -118,7 +108,7 @@ export const UnlockIcon = (p: IconProps) => (
 
 export const SlidersIcon = (p: IconProps) => (
   <Base {...p}>
-    <path d="M20.5 4h-6" />
+    <path d="M16.5 4h-2" />
     <path d="M9.5 4H3.5" />
     <path d="M20.5 12h-8" />
     <path d="M7.5 12h-4" />
@@ -127,6 +117,11 @@ export const SlidersIcon = (p: IconProps) => (
     <path d="M14.5 2v4" />
     <path d="M7.5 10v4" />
     <path d="M16.5 18v4" />
+    <path
+      d="M19.5 2.8c.11.68.44 1.01 1.12 1.12-.68.11-1.01.44-1.12 1.12-.11-.68-.44-1.01-1.12-1.12.68-.11 1.01-.44 1.12-1.12Z"
+      fill="currentColor"
+      stroke="none"
+    />
   </Base>
 );
 
@@ -148,17 +143,42 @@ export const NoteIcon = (p: IconProps) => (
     <path d="M9.5 17.5V5.5L20.5 3.5v13" />
     <circle cx="6.8" cy="17.5" r="2.7" />
     <circle cx="17.8" cy="16.5" r="2.7" />
+    <path
+      d="M4.9 2.9c.12.73.47 1.08 1.2 1.2-.73.12-1.08.47-1.2 1.2-.12-.73-.47-1.08-1.2-1.2.73-.12 1.08-.47 1.2-1.2Z"
+      fill="currentColor"
+      stroke="none"
+    />
+  </Base>
+);
+
+export const MicIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="9" y="3.2" width="6" height="9.3" rx="3" />
+    <path d="M10.2 7.2h3.6" />
+    <path d="M6.8 11a5.2 5.2 0 0 0 10.4 0" />
+    <path d="M12 16.2v3.3" />
+    <path d="M9 20.5h6" />
+    <path
+      d="M18.8 2.9c.11.68.44 1.01 1.12 1.12-.68.11-1.01.44-1.12 1.12-.11-.68-.44-1.01-1.12-1.12.68-.11 1.01-.44 1.12-1.12Z"
+      fill="currentColor"
+      stroke="none"
+    />
   </Base>
 );
 
 export const ListIcon = (p: IconProps) => (
   <Base {...p}>
-    <path d="M8.5 6.5h12" />
+    <path d="M8.5 6.5h7.6" />
     <path d="M8.5 12h12" />
     <path d="M8.5 17.5h12" />
     <path d="M4 6.5h.01" />
     <path d="M4 12h.01" />
     <path d="M4 17.5h.01" />
+    <path
+      d="M19.2 3.1c.12.78.5 1.16 1.28 1.28-.78.12-1.16.5-1.28 1.28-.12-.78-.5-1.16-1.28-1.28.78-.12 1.16-.5 1.28-1.28Z"
+      fill="currentColor"
+      stroke="none"
+    />
   </Base>
 );
 

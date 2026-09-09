@@ -1,16 +1,17 @@
-# Nebula — Spotify Overlay
+# Snapify - Spotify Overlay
 
-A lightweight, always-on-top Spotify overlay for Windows. Transparent glass panes you can drag, snap, and lock: player, synced lyrics, and queue. Built with Tauri v2, React, and Rust.
+A lightweight, always-on-top Spotify overlay for Windows. Transparent glass panes you can drag, snap, and lock: player, synced lyrics, queue, and visualizer. Built with Tauri v2, React, and Rust.
 
-![Status](https://img.shields.io/badge/status-v0.1.0-blue) ![Tauri](https://img.shields.io/badge/tauri-v2-orange) ![License](https://img.shields.io/badge/license-MIT-green)
+![Status](https://img.shields.io/badge/status-v1.0.0-blue) ![Tauri](https://img.shields.io/badge/tauri-v2-orange) ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## What it does
 
-- **Player pane** — cover art, now playing, progress with click-to-seek, play/pause/next/previous, volume, shuffle, repeat, device picker.
-- **Lyrics pane** — line-synced lyrics with karaoke highlight, click a line to seek, auto-scroll, cached offline. Plain-lyrics, instrumental, and no-match states included.
+- **Player pane** — cover art, now playing, progress with click-to-seek, play/pause/next/previous, volume, shuffle, repeat, device picker, plus an album-art ambient tint sampled into the pane backdrop.
+- **Lyrics pane** — line-synced lyrics with karaoke highlight, word-by-word singing progress on the active line, click a line to seek, auto-scroll, cached offline, plus optional per-line translations (ES/FR/DE/PT/JA, cached, silent when offline). Plain-lyrics, instrumental, and no-match states included.
 - **Queue pane** — up-next list with refresh.
-- **Snappable layout** — drag panes by their header in edit mode, magnet snap to edges and other panes (Shift bypasses), corner resize, three presets (minimal, full, lyrics), geometry persists across restarts.
-- **Settings** — preset switch, pane opacity, UI scale, click-through-when-locked, click-lyric-to-seek, shortcuts reference.
+- **Visualizer pane** — ambient motion signature seeded by the track. The Spotify Web API exposes no audio stream, so bars advance while the track plays and freeze on pause. Still under reduced-motion.
+- **Snappable layout** — drag panes by their header in edit mode, magnet snap to edges and other panes (Shift bypasses), corner resize, four presets (minimal, full, lyrics, spotlight), geometry persists across restarts (v1 layouts migrate forward untouched).
+- **Settings** — preset switch, pane opacity, UI scale, dark/light theme, album-art tint, word karaoke, lyric translation language, launch-on-login, click-through-when-locked, click-lyric-to-seek, shortcuts reference.
 
 ## Stack
 
@@ -66,10 +67,21 @@ src/
   App.tsx            # shell, polling, drag/snap, shortcuts, top bar
   lib/spotify.ts     # response parsers + command wrappers
   lib/lrc.ts         # active-line binary search, time format
-  lib/layout.ts      # presets, snap engine, localStorage persistence
+  lib/ambient.ts     # cover-art average-color sampler (24px canvas, memo cap 20)
+  lib/translate.ts   # per-line translations, localStorage cache (cap 200)
+  lib/layout.ts      # presets, snap engine, localStorage persistence (v2)
   lib/types.ts       # Pane, PlayerSnapshot, LyricsData, QueueItem
-  components/        # PlayerPane, LyricsPane, QueuePane, SettingsModal
+  components/        # PlayerPane, LyricsPane, QueuePane, VisualizerPane, SettingsModal
 ```
+
+## Memory budget
+
+Release target is 40–70 MB. What keeps it there:
+
+- Player polling (3 s) and the 500 ms progress tick pause while the window is hidden and resume on show.
+- The visualizer runs one rAF loop only while its pane is mounted, freezes on pause, and stops under reduced-motion.
+- Lyrics file cache caps at 500 tracks, translation cache at 200 lines, ambient sampler memo at 20 covers.
+- Icon and bundle assets ship from `icon pack/` (`src-tauri/icons`, `public/snapify-icon.*`).
 
 ## Shortcuts
 
@@ -101,9 +113,9 @@ Click-through passes mouse events to windows below. Refocus the overlay from the
 
 ## Roadmap
 
-- v0.2 — tray icon, global hotkeys, installer, copy pass.
-- v0.3 — album-art ambient tint, light preset, launch-on-login, release memory budget.
-- v1.0 — visualizer pane, word-by-word karaoke, translations.
+- v0.2 — tray icon, global hotkeys, installer, copy pass. Shipped.
+- v0.3 — album-art ambient tint, light preset, launch-on-login, release memory budget. Shipped.
+- v1.0 — visualizer pane, word-by-word karaoke, translations. Shipped.
 
 ## Contributing
 

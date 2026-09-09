@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Snapify small app icon">
+  <title>Snapify small — flat squircle, snap-ring and arcs</title>
+  <rect width="64" height="64" rx="14" fill="#0A0C10"/>
+  <ellipse cx="14" cy="9" rx="30" ry="16" fill="#4C5CE0" opacity="0.10"/>
+  <g transform="rotate(-18 32 32)" fill="none" stroke-linecap="round">
+    <path d="M 51.05 21 A 22 22 0 1 1 43 12.95" stroke="#F4F6F8" stroke-width="5"/>
+    <path d="M 18 29 Q 32 35 46 29" stroke="#F4F6F8" stroke-width="5"/>
+    <path d="M 21 36 Q 32 41 43 36" stroke="#F4F6F8" stroke-width="5"/>
+    <path d="M 24 42.5 Q 32 46.5 40 42.5" stroke="#F4F6F8" stroke-width="5"/>
+  </g>
+  <path transform="translate(17 15)" d="M0 -2.6 Q0.47 -0.47 2.6 0 Q0.47 0.47 0 2.6 Q-0.47 0.47 -2.6 0 Q-0.47 -0.47 0 -2.6 Z" fill="#FFFFFF" opacity="0.85"/>
+  <path transform="translate(49 47)" d="M0 -3.4 Q0.61 -0.61 3.4 0 Q0.61 0.61 0 3.4 Q-0.61 0.61 -3.4 0 Q-0.61 -0.61 0 -3.4 Z" fill="#1ED760"/>
+  <rect width="64" height="64" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="1"/>
+</svg>

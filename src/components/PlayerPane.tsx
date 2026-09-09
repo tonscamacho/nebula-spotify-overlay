@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DeviceInfo, PlayerSnapshot } from "../lib/types";
 import { formatMs } from "../lib/lrc";
+import { sampleAmbient } from "../lib/ambient";
 import {
   NextIcon,
   NoteIcon,
@@ -19,6 +20,7 @@ interface Props {
   devices: DeviceInfo[];
   progressMs: number;
   busy: boolean;
+  ambientOn: boolean;
   onPlay: () => void;
   onPause: () => void;
   onNext: () => void;
@@ -33,9 +35,24 @@ interface Props {
 
 export default function PlayerPane(p: Props) {
   const [vol, setVol] = useState<number | null>(null);
+  const [tint, setTint] = useState<string | null>(null);
   const s = p.snapshot;
   const track = s.track;
   const shownVol = vol ?? s.volume ?? 50;
+
+  useEffect(() => {
+    if (!p.ambientOn || !track?.image) {
+      setTint(null);
+      return;
+    }
+    let live = true;
+    void sampleAmbient(track.image).then((c) => {
+      if (live) setTint(c);
+    });
+    return () => {
+      live = false;
+    };
+  }, [p.ambientOn, track?.image]);
 
   const commitSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!track || track.durationMs <= 0) return;
@@ -59,7 +76,10 @@ export default function PlayerPane(p: Props) {
   }
 
   return (
-    <div className="pane-body">
+    <div
+      className={`pane-body${tint ? " has-ambient" : ""}`}
+      style={tint ? ({ "--ambient": tint } as React.CSSProperties) : undefined}
+    >
       <div className="track-row">
         {track.image ? (
           <img className="cover" src={track.image} alt="" draggable={false} />

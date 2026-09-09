@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snapify Icon Pack — Preview</title>
+<style>
+  :root { color-scheme: dark light; }
+  body { margin: 0; font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; background: #0a0c10; color: #f4f6f8; }
+  header, section { max-width: 960px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 16px; color: rgba(244,246,248,.6); }
+  .grid { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+  .cell { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 16px; text-align: center; min-width: 120px; }
+  .cell small { display: block; margin-top: 8px; color: rgba(244,246,248,.55); font-variant-numeric: tabular-nums; }
+  .light { background: #e9ebf1; color: #14181f; border-radius: 18px; padding: 24px; margin-top: 16px; }
+  .light .cell { background: rgba(12,17,26,.05); border-color: rgba(12,17,26,.1); }
+  .light .cell small { color: rgba(20,24,31,.55); }
+  .ui { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ui .cell { min-width: 96px; color: inherit; }
+  .ui svg { width: 24px; height: 24px; }
+  img.crisp { image-rendering: auto; }
+</style>
+<header>
+  <h1>Snapify — Nebula Icon Pack</h1>
+  <p class="sub">Full tile, small tile, mono tray. Open this file directly, no server needed.</p>
+  <div class="grid">
+    <div class="cell"><img class="crisp" src="app-icon-1024.png" width="128" height="128" alt="master 1024"><small>master 1024 → 128</small></div>
+    <div class="cell"><img src="png/app-icon-64.png" width="64" height="64" alt="64"><small>small 64</small></div>
+    <div class="cell"><img src="png/app-icon-32.png" width="32" height="32" alt="32"><small>small 32</small></div>
+    <div class="cell"><img src="png/app-icon-16.png" width="16" height="16" alt="16"><small>small 16</small></div>
+    <div class="cell"><img src="png/tray-24.png" width="24" height="24" alt="tray 24"><small>mono tray 24</small></div>
+    <div class="cell"><img src="tauri/StoreLogo.png" width="50" height="50" alt="store"><small>StoreLogo</small></div>
+  </div>
+  <div class="light">
+    <strong>On light</strong>
+    <div class="grid" style="margin-top:12px">
+      <div class="cell"><img src="png/app-icon-64.png" width="64" height="64" alt="64 light"><small>small 64</small></div>
+      <div class="cell"><img src="png/app-icon-32.png" width="32" height="32" alt="32 light"><small>small 32</small></div>
+      <div class="cell" style="color:#14181f"><img src="svg/app-icon-mono.svg" width="24" height="24" alt="mono" style="filter:invert(1)"><small>mono inverted</small></div>
+    </div>
+  </div>
+</header>
+<section>
+  <h2>UI glyphs (24 grid, currentColor)</h2>
+  <div class="ui">
+    <div class="cell"><img src="svg/ui/play.svg" alt="play"><small>play</small></div>
+    <div class="cell"><img src="svg/ui/pause.svg" alt="pause"><small>pause</small></div>
+    <div class="cell"><img src="svg/ui/next.svg" alt="next"><small>next</small></div>
+    <div class="cell"><img src="svg/ui/prev.svg" alt="prev"><small>prev</small></div>
+    <div class="cell"><img src="svg/ui/shuffle.svg" alt="shuffle"><small>shuffle</small></div>
+    <div class="cell"><img src="svg/ui/repeat.svg" alt="repeat"><small>repeat</small></div>
+    <div class="cell"><img src="svg/ui/repeat-1.svg" alt="repeat-1"><small>repeat-1</small></div>
+    <div class="cell"><img src="svg/ui/volume.svg" alt="volume"><small>volume</small></div>
+    <div class="cell"><img src="svg/ui/queue.svg" alt="queue"><small>queue ✦</small></div>
+    <div class="cell"><img src="svg/ui/lyrics-mic.svg" alt="lyrics"><small>lyrics ✦</small></div>
+    <div class="cell"><img src="svg/ui/settings.svg" alt="settings"><small>settings ✦</small></div>
+    <div class="cell"><img src="svg/ui/lock.svg" alt="lock"><small>lock</small></div>
+    <div class="cell"><img src="svg/ui/unlock.svg" alt="unlock"><small>unlock</small></div>
+    <div class="cell"><img src="svg/ui/minimize.svg" alt="minimize"><small>minimize</small></div>
+    <div class="cell"><img src="svg/ui/close.svg" alt="close"><small>close</small></div>
+    <div class="cell"><img src="svg/ui/note.svg" alt="note"><small>note ✦</small></div>
+    <div class="cell"><img src="svg/ui/refresh.svg" alt="refresh"><small>refresh</small></div>
+  </div>
+  <p class="sub">✦ carries the single galaxy sparkle. Transport, lock, and window chrome stay plain.</p>
+</section>
+</html>

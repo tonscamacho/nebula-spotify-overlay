@@ -121,7 +121,7 @@ pub async fn start_login(
 
 fn reply_page(stream: &mut std::net::TcpStream, ok: bool, message: &str) {
     let body = format!(
-        "<!doctype html><html><body style=\"background:#0b0e13;color:#f2f5f9;font-family:sans-serif;display:grid;place-items:center;height:100vh\"><h2>{}</h2><p>{}</p><p>You can close this tab and return to Spotify Overlay.</p></body></html>",
+        "<!doctype html><html><body style=\"background:#0b0e13;color:#f2f5f9;font-family:sans-serif;display:grid;place-items:center;height:100vh\"><h2>{}</h2><p>{}</p><p>You can close this tab and return to Snapify.</p></body></html>",
         if ok { "Connected" } else { "Login failed" },
         message
     );
