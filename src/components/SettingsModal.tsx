@@ -180,7 +180,7 @@ export default function SettingsModal(p: Props) {
           </div>
           <div>
             <span>Show / Hide overlay</span>
-            <span className="kbd">Ctrl+Alt+O</span>
+            <span className="kbd">Shift+Tab</span>
           </div>
           <div>
             <span>Edit lock</span>

@@ -83,7 +83,7 @@ fn register_shortcuts(app: &tauri::AppHandle) {
     let defs = [
         (Modifiers::CONTROL | Modifiers::ALT, Code::KeyP, "shortcut-playpause"),
         (Modifiers::CONTROL | Modifiers::ALT, Code::KeyN, "shortcut-next"),
-        (Modifiers::CONTROL | Modifiers::ALT, Code::KeyO, "shortcut-visibility"),
+        (Modifiers::SHIFT, Code::Tab, "shortcut-visibility"),
         (Modifiers::CONTROL | Modifiers::ALT, Code::KeyE, "shortcut-edit"),
     ];
     for (mods, code, event) in defs {
@@ -113,7 +113,7 @@ pub fn run() {
                     let playpause =
                         Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyP);
                     let next = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyN);
-                    let vis = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyO);
+                    let vis = Shortcut::new(Some(Modifiers::SHIFT), Code::Tab);
                     let edit = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyE);
                     if shortcut == &playpause {
                         let _ = app.emit("shortcut-playpause", ());

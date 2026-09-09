@@ -275,6 +275,11 @@ export default function App() {
   // In-app shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key === "Tab" && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        void getCurrentWindow().hide();
+        return;
+      }
       if (!(e.ctrlKey && e.altKey)) return;
       const k = e.key.toLowerCase();
       if (k === "e") {
@@ -297,9 +302,6 @@ export default function App() {
         if (snapRef.current.track) {
           void run(() => api.next(snapRef.current.deviceId));
         }
-      } else if (k === "o") {
-        e.preventDefault();
-        void getCurrentWindow().hide();
       }
     };
     window.addEventListener("keydown", onKey);

@@ -91,7 +91,7 @@ Global — work over games and fullscreen apps:
 | ---------- | ------------------- |
 | Ctrl+Alt+P | Play / Pause        |
 | Ctrl+Alt+N | Next track          |
-| Ctrl+Alt+O | Show / Hide overlay |
+| Shift+Tab  | Show / Hide overlay |
 | Ctrl+Alt+E | Toggle edit lock    |
 
 In-window — the overlay must be focused:
