@@ -133,7 +133,8 @@ export default function LyricsPane(p: Props) {
       <div className="lyrics">
         {d.cues.map((c, i) => {
           const isActive = i === active;
-          const karaoke = p.wordKaraoke && isActive && c.text.trim() !== "";
+          const blank = c.text === "";
+          const karaoke = p.wordKaraoke && isActive && !blank;
           const end = d.cues[i + 1]?.t ?? c.t + 4000;
           const frac =
             karaoke && end > c.t
@@ -145,7 +146,9 @@ export default function LyricsPane(p: Props) {
             <div
               key={`${c.t}-${i}`}
               ref={isActive ? activeRef : undefined}
-              className={isActive ? "line on" : i < active ? "line past" : "line"}
+              className={
+                blank ? "line gap" : isActive ? "line on" : i < active ? "line past" : "line"
+              }
               onClick={p.clickToSeek ? () => p.onSeek(c.t) : undefined}
               title={p.clickToSeek ? "Seek to this line" : undefined}
             >
@@ -159,8 +162,10 @@ export default function LyricsPane(p: Props) {
                   ))}
                   {trans && <div className="trans">{trans}</div>}
                 </>
+              ) : blank ? (
+                "···"
               ) : (
-                (c.text === "" ? "···" : c.text)
+                c.text
               )}
             </div>
           );

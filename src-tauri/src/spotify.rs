@@ -22,6 +22,9 @@ async fn call(
         .query(query);
     if let Some(b) = body {
         req = req.json(&b);
+    } else {
+        // Spotify answers bodiless PUT/POST without a length as 411.
+        req = req.body("");
     }
     let res = req.send().await.map_err(|e| e.to_string())?;
 
