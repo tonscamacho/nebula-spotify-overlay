@@ -20,12 +20,12 @@
       <stop offset="0.6" stop-color="#000000" stop-opacity="0"/>
       <stop offset="1" stop-color="#000000" stop-opacity="0.35"/>
     </radialGradient>
-    <clipPath id="sq">
-      <rect width="1024" height="1024" rx="224"/>
+    <clipPath id="circ">
+      <circle cx="512" cy="512" r="480"/>
     </clipPath>
   </defs>
-  <rect width="1024" height="1024" rx="224" fill="url(#tile)"/>
-  <g clip-path="url(#sq)">
+  <circle cx="512" cy="512" r="480" fill="url(#tile)"/>
+  <g clip-path="url(#circ)">
     <ellipse cx="200" cy="110" rx="540" ry="330" fill="url(#nebInd)"/>
     <ellipse cx="860" cy="920" rx="560" ry="360" fill="url(#nebVio)"/>
     <rect width="1024" height="1024" fill="url(#vig)"/>
@@ -43,5 +43,5 @@
   <path transform="translate(776 296)" d="M0 -11 Q2 -2 11 0 Q2 2 0 11 Q-2 2 -11 0 Q-2 -2 0 -11 Z" fill="#F4F6F8" opacity="0.7"/>
   <path transform="translate(240 762)" d="M0 -10 Q1.8 -1.8 10 0 Q1.8 1.8 0 10 Q-1.8 1.8 -10 0 Q-1.8 -1.8 0 -10 Z" fill="#F4F6F8" opacity="0.55"/>
   <path transform="translate(788 742)" d="M0 -20 Q3.6 -3.6 20 0 Q3.6 3.6 0 20 Q-3.6 3.6 -20 0 Q-3.6 -3.6 0 -20 Z" fill="#1ED760"/>
-  <rect width="1024" height="1024" rx="224" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+  <circle cx="512" cy="512" r="478.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
 </svg>

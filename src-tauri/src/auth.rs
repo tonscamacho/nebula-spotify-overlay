@@ -76,6 +76,19 @@ fn clear_refresh_token() {
     }
 }
 
+fn is_invalid_grant(body: &str) -> bool {
+    body.contains("invalid_grant")
+}
+
+/// Drop a dead session everywhere: memory, OS keyring, and the frontend gate.
+fn kill_session(app: &AppHandle, state: &AuthState) {
+    if let Ok(mut tokens) = state.tokens.lock() {
+        *tokens = None;
+    }
+    clear_refresh_token();
+    let _ = app.emit("auth-changed", false);
+}
+
 #[tauri::command]
 pub async fn auth_status(state: State<'_, AuthState>) -> Result<AuthStatus, String> {
     let logged_in = state.tokens.lock().map_err(|e| e.to_string())?.is_some();
@@ -340,6 +353,36 @@ async fn refresh_tokens(refresh: &str) -> Result<Tokens, String> {
     })
 }
 
+/// Force a refresh with the stored credential (used at boot and on 401).
+/// Self-heals a revoked or rotated refresh token by clearing the dead
+/// session so the login gate reopens instead of retrying forever.
+pub async fn refresh_now(app: &AppHandle) -> Result<String, String> {
+    let state = app.try_state::<AuthState>().ok_or("auth state missing")?;
+    let refresh = {
+        let tokens = state.tokens.lock().map_err(|e| e.to_string())?;
+        tokens.clone().and_then(|t| t.refresh_token.clone())
+    }
+    .or_else(load_refresh_token)
+    .ok_or("Not logged in. Start login first.")?;
+    match refresh_tokens(&refresh).await {
+        Ok(fresh) => {
+            let token = fresh.access_token.clone();
+            if let Ok(mut tokens) = state.tokens.lock() {
+                *tokens = Some(fresh);
+            }
+            let _ = app.emit("auth-changed", true);
+            Ok(token)
+        }
+        Err(e) => {
+            if is_invalid_grant(&e) {
+                kill_session(app, &state);
+                return Err("Session expired. Please login again.".into());
+            }
+            Err(e)
+        }
+    }
+}
+
 /// Returns a valid access token, refreshing silently when expired.
 pub async fn access_token(app: &AppHandle) -> Result<String, String> {
     let state = app
@@ -355,19 +398,7 @@ pub async fn access_token(app: &AppHandle) -> Result<String, String> {
     };
 
     if needs_refresh {
-        let refresh = {
-            let tokens = state.tokens.lock().map_err(|e| e.to_string())?;
-            tokens.clone().and_then(|t| t.refresh_token.clone())
-        }
-        .or_else(load_refresh_token)
-        .ok_or("Not logged in. Start login first.")?;
-        let fresh = refresh_tokens(&refresh).await?;
-        let token = fresh.access_token.clone();
-        if let Ok(mut tokens) = state.tokens.lock() {
-            *tokens = Some(fresh);
-        }
-        let _ = app.emit("auth-changed", true);
-        return Ok(token);
+        return refresh_now(app).await;
     }
 
     let tokens = state.tokens.lock().map_err(|e| e.to_string())?;

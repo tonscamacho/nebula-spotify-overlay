@@ -64,12 +64,12 @@ src-tauri/src/
   spotify.rs  # Web API proxy: player, queue, devices
   lyrics.rs   # LRCLIB lookup, LRC parser, 500-track file cache
 src/
-  App.tsx            # shell, polling, drag/snap, shortcuts, top bar
+  App.tsx            # fullscreen chromeless shell, polling, drag/resize/snap, shortcuts, edit dock
   lib/spotify.ts     # response parsers + command wrappers
   lib/lrc.ts         # active-line binary search, time format
   lib/ambient.ts     # cover-art average-color sampler (24px canvas, memo cap 20)
   lib/translate.ts   # per-line translations, localStorage cache (cap 200)
-  lib/layout.ts      # presets, snap engine, localStorage persistence (v2)
+  lib/layout.ts      # presets, move/resize snap engine with guides, localStorage persistence (v3, per-pane opacity)
   lib/types.ts       # Pane, PlayerSnapshot, LyricsData, QueueItem
   components/        # PlayerPane, LyricsPane, QueuePane, VisualizerPane, SettingsModal
 ```

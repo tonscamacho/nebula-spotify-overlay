@@ -15,10 +15,28 @@ async fn call(
     body: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     let token = auth::access_token(app).await?;
+    let res = send(method.clone(), path, query, body.clone(), &token).await?;
+    if res.status() == StatusCode::UNAUTHORIZED {
+        // Token died mid-session (clock skew, revocation). Refresh once and
+        // retry before surfacing; refresh_now self-heals dead sessions.
+        let fresh = auth::refresh_now(app).await?;
+        let res = send(method, path, query, body, &fresh).await?;
+        return interpret(res).await;
+    }
+    interpret(res).await
+}
+
+async fn send(
+    method: Method,
+    path: &str,
+    query: &[(&str, &str)],
+    body: Option<serde_json::Value>,
+    token: &str,
+) -> Result<reqwest::Response, String> {
     let client = reqwest::Client::new();
     let mut req = client
-        .request(method.clone(), api_url(path))
-        .bearer_auth(&token)
+        .request(method, api_url(path))
+        .bearer_auth(token)
         .query(query);
     if let Some(b) = body {
         req = req.json(&b);
@@ -26,8 +44,10 @@ async fn call(
         // Spotify answers bodiless PUT/POST without a length as 411.
         req = req.body("");
     }
-    let res = req.send().await.map_err(|e| e.to_string())?;
+    req.send().await.map_err(|e| e.to_string())
+}
 
+async fn interpret(res: reqwest::Response) -> Result<serde_json::Value, String> {
     if res.status() == StatusCode::TOO_MANY_REQUESTS {
         let wait = res
             .headers()

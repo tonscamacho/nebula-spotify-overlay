@@ -14,13 +14,18 @@
       {
         "label": "main",
         "title": "Snapify - Spotify Overlay",
-        "width": 920,
-        "height": 720,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 400,
+        "minHeight": 300,
+        "fullscreen": false,
+        "maximized": true,
         "transparent": true,
         "decorations": false,
         "shadow": false,
         "alwaysOnTop": true,
         "resizable": true,
+        "maximizable": true,
         "visible": true,
         "focus": true
       }

@@ -5,7 +5,6 @@ interface Props {
   open: boolean;
   loggedIn: boolean;
   preset: string;
-  opacity: number;
   uiScale: number;
   theme: "dark" | "light";
   ambientTint: boolean;
@@ -15,7 +14,6 @@ interface Props {
   wordKaraoke: boolean;
   transLang: TransLang;
   onPreset: (name: string) => void;
-  onOpacity: (v: number) => void;
   onUiScale: (v: number) => void;
   onTheme: (v: "dark" | "light") => void;
   onAmbientTint: (v: boolean) => void;
@@ -85,16 +83,6 @@ export default function SettingsModal(p: Props) {
               </button>
             ))}
           </span>
-        </label>
-        <label className="row">
-          <span>Pane opacity</span>
-          <input
-            type="range"
-            min={40}
-            max={100}
-            value={Math.round(p.opacity * 100)}
-            onChange={(e) => p.onOpacity(Number(e.target.value) / 100)}
-          />
         </label>
         <label className="row">
           <span>UI scale</span>
@@ -168,6 +156,10 @@ export default function SettingsModal(p: Props) {
             Reset
           </button>
         </label>
+        <div className="hint">
+          Each pane has its own opacity slider in its header while editing (double-click
+          the canvas, or Ctrl+Alt+E).
+        </div>
         <div className="hint">Shortcuts work everywhere, even over a game:</div>
         <div className="keys">
           <div>

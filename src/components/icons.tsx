@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
 
+// In-app glyphs mirror `icon pack/svg/ui/` (viewBox 0 0 24, stroke 1.8,
+// round caps): PlayIcon<->play.svg, PauseIcon<->pause.svg, NextIcon<->next.svg,
+// PrevIcon<->prev.svg, ShuffleIcon<->shuffle.svg, RepeatIcon<->repeat.svg,
+// RepeatOneIcon<->repeat-1.svg, VolumeIcon<->volume.svg, ListIcon<->queue.svg,
+// MicIcon<->lyrics-mic.svg, SlidersIcon<->settings.svg, LockIcon<->lock.svg,
+// UnlockIcon<->unlock.svg, MinusIcon<->minimize.svg, XIcon<->close.svg,
+// NoteIcon<->note.svg, RefreshIcon<->refresh.svg. Keep paths in sync there.
+
 interface IconProps {
   size?: number;
   className?: string;

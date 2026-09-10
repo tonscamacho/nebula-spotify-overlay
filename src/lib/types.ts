@@ -7,12 +7,14 @@ export interface PaneState {
   y: number;
   w: number;
   h: number;
+  /** Per-pane glass opacity, 0.4–1. Persisted in layout v3. */
+  opacity: number;
   visible: boolean;
   z: number;
 }
 
 export interface LayoutState {
-  version: 2;
+  version: 3;
   preset: string;
   panes: PaneState[];
 }

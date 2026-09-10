@@ -5,7 +5,7 @@ Spotify-esque in feel, not in artwork: no Spotify circle, no level bars, no gree
 
 ## Design
 
-A full-bleed deep-space squircle (`rx 22%`) holds a broken snap-ring tilted −18°,
+A deep-space disc (`circle r 480/1024`, transparent outside) holds a broken snap-ring tilted −18°,
 three orbital sound-arcs shortening downward, and a four-point starfield with one
 signal-green accent. Palette is taken from `src/App.css`:
 
@@ -14,7 +14,7 @@ signal-green accent. Palette is taken from `src/App.css`:
 - signal `#1ED760` reserved for the snap-terminal dot and one accent star
 - line work `#F4F6F8`
 
-Small sizes drop gradients and keep two bold sparkles so 16 px stays legible.
+Small sizes are the same flat disc (`r 30/64`), drop gradients, and keep two bold sparkles so 16 px stays legible.
 The mono tray mark is flat white on transparent and recolors to any theme.
 
 Trademark note: this set is original artwork. It nods to sound waves in general,
@@ -22,8 +22,8 @@ not to the Spotify logo. Do not add three level bars in a green circle.
 
 ## Contents
 
-- `svg/app-icon.svg` — full-color master, `viewBox 0 0 1024 1024`
-- `svg/app-icon-small.svg` — flat small-size tile, `viewBox 0 0 64 64`
+- `svg/app-icon.svg` — full-color master disc, `viewBox 0 0 1024 1024`
+- `svg/app-icon-small.svg` — flat small-size disc, `viewBox 0 0 64 64`
 - `svg/app-icon-mono.svg` — one-color tray mark, `viewBox 0 0 32 32`
 - `svg/ui/` — 17 in-app glyphs, `viewBox 0 0 24 24`, stroke 1.8 round caps
   (`play pause next prev shuffle repeat repeat-1 volume queue lyrics-mic

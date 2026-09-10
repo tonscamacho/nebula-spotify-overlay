@@ -1,22 +1,25 @@
 import type { LayoutState, PaneState, PaneType } from "./types";
 
-const KEY = "snapify-layout-v2";
-const LEGACY_KEY = "nebula-layout-v1";
+const KEY = "snapify-layout-v3";
+const LEGACY_KEYS = ["snapify-layout-v2", "nebula-layout-v1"];
 export const SNAP_EDGE = 8;
 export const SNAP_ZONE = 16;
+export const DEFAULT_OPACITY = 0.92;
+export const MIN_W = 240;
+export const MIN_H = 120;
 
 function pane(id: string, type: PaneType, x: number, y: number, w: number, h: number, z: number): PaneState {
-  return { id, type, x, y, w, h, visible: true, z };
+  return { id, type, x, y, w, h, opacity: DEFAULT_OPACITY, visible: true, z };
 }
 
 export const PRESETS: Record<string, () => LayoutState> = {
   minimal: () => ({
-    version: 2,
+    version: 3,
     preset: "minimal",
     panes: [pane("player", "player", 24, 24, 340, 196, 1)],
   }),
   full: () => ({
-    version: 2,
+    version: 3,
     preset: "full",
     panes: [
       pane("player", "player", 24, 24, 340, 236, 1),
@@ -24,7 +27,7 @@ export const PRESETS: Record<string, () => LayoutState> = {
     ],
   }),
   lyrics: () => ({
-    version: 2,
+    version: 3,
     preset: "lyrics",
     panes: [
       pane("lyrics", "lyrics", 24, 24, 420, 380, 1),
@@ -32,7 +35,7 @@ export const PRESETS: Record<string, () => LayoutState> = {
     ],
   }),
   spotlight: () => ({
-    version: 2,
+    version: 3,
     preset: "spotlight",
     panes: [
       pane("player", "player", 24, 24, 340, 250, 1),
@@ -46,77 +49,258 @@ export function defaultLayout(): LayoutState {
   return PRESETS.full();
 }
 
-function valid(parsed: unknown): parsed is LayoutState {
-  if (!parsed || typeof parsed !== "object") return false;
-  const l = parsed as Partial<LayoutState>;
-  if (!Array.isArray(l.panes) || l.panes.length === 0) return false;
-  if (typeof l.preset !== "string" || !PRESETS[l.preset]) return false;
-  const types = ["player", "lyrics", "queue", "visualizer"];
-  return l.panes.every(
-    (x) =>
-      x &&
-      typeof x === "object" &&
-      typeof (x as PaneState).id === "string" &&
-      types.includes((x as PaneState).type),
-  );
+/**
+ * First-run arrangement for a fullscreen canvas: lyrics top-right,
+ * player bottom-right, the rest cascading top-left.
+ */
+export function defaultLayoutFor(areaW: number, areaH: number): LayoutState {
+  const W = Math.max(800, Math.floor(areaW));
+  const H = Math.max(600, Math.floor(areaH));
+  const lyricsW = 420;
+  const playerW = 360;
+  const playerH = 230;
+  const lyricsH = Math.min(420, H - 48);
+  return {
+    version: 3,
+    preset: "full",
+    panes: [
+      {
+        id: "lyrics",
+        type: "lyrics",
+        x: Math.max(0, W - lyricsW - 24),
+        y: 24,
+        w: lyricsW,
+        h: lyricsH,
+        opacity: DEFAULT_OPACITY,
+        visible: true,
+        z: 1,
+      },
+      {
+        id: "player",
+        type: "player",
+        x: Math.max(0, W - playerW - 24),
+        y: Math.max(0, H - playerH - 24),
+        w: playerW,
+        h: playerH,
+        opacity: DEFAULT_OPACITY,
+        visible: true,
+        z: 2,
+      },
+    ],
+  };
 }
 
-export function loadLayout(): LayoutState {
-  const raw =
-    (() => {
-      try {
-        return localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
-      } catch {
-        return null;
-      }
-    })();
-  if (!raw) return defaultLayout();
-  try {
-    const parsed = JSON.parse(raw) as LayoutState;
-    if (!valid(parsed)) return defaultLayout();
-    // v1 layouts migrate forward untouched: arrangement is preserved and
-    // the visualizer arrives through the spotlight preset.
-    return { ...parsed, version: 2 };
-  } catch {
-    return defaultLayout();
+function num(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+function coercePane(raw: Partial<PaneState>, z: number): PaneState | null {
+  const types = ["player", "lyrics", "queue", "visualizer"];
+  if (!raw || typeof raw.id !== "string" || !types.includes(raw.type as string)) return null;
+  return {
+    id: raw.id,
+    type: raw.type as PaneState["type"],
+    x: Math.max(0, Math.round(num(raw.x, 24))),
+    y: Math.max(0, Math.round(num(raw.y, 24))),
+    w: Math.max(MIN_W, Math.round(num(raw.w, 340))),
+    h: Math.max(MIN_H, Math.round(num(raw.h, 220))),
+    opacity: Math.min(1, Math.max(0.4, num(raw.opacity, DEFAULT_OPACITY))),
+    visible: raw.visible !== false,
+    z: num(raw.z, z),
+  };
+}
+
+function coerceLayout(parsed: unknown): LayoutState | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const l = parsed as Partial<LayoutState>;
+  if (!Array.isArray(l.panes) || l.panes.length === 0) return null;
+  const panes: PaneState[] = [];
+  l.panes.forEach((p, i) => {
+    const c = coercePane(p as Partial<PaneState>, i + 1);
+    if (c) panes.push(c);
+  });
+  if (panes.length === 0) return null;
+  return {
+    version: 3,
+    preset: typeof l.preset === "string" && l.preset ? l.preset : "custom",
+    panes,
+  };
+}
+
+export function loadLayout(): LayoutState | null {
+  for (const k of [KEY, ...LEGACY_KEYS]) {
+    try {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const layout = coerceLayout(JSON.parse(raw) as unknown);
+      if (layout) return layout;
+    } catch {
+      // Corrupt entry. Try the next key.
+    }
   }
+  return null;
 }
 
 export function saveLayout(layout: LayoutState): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout));
+    localStorage.setItem(KEY, JSON.stringify({ ...layout, version: 3 }));
   } catch {
     // Storage full or blocked. Layout stays in memory.
   }
 }
 
-function snapOne(value: number, targets: number[], threshold: number): number {
+/** Clamp a restored layout into the live window so panes never strand off-screen. */
+export function clampLayoutToArea(layout: LayoutState, areaW: number, areaH: number): LayoutState {
+  const panes = layout.panes.map((p) => ({
+    ...p,
+    w: Math.min(p.w, Math.max(MIN_W, Math.floor(areaW) - 16)),
+    h: Math.min(p.h, Math.max(MIN_H, Math.floor(areaH) - 16)),
+    x: Math.min(Math.max(0, p.x), Math.max(0, Math.floor(areaW) - MIN_W)),
+    y: Math.min(Math.max(0, p.y), Math.max(0, Math.floor(areaH) - 120)),
+  }));
+  return { ...layout, panes };
+}
+
+export interface SnapResult {
+  x: number;
+  y: number;
+  /** Vertical guide lines (x positions) where the snap landed. */
+  v: number[];
+  /** Horizontal guide lines (y positions) where the snap landed. */
+  h: number[];
+}
+
+function snapValue(value: number, targets: { at: number }[], threshold: number): { at: number; line: number | null } {
+  const v = Math.round(value);
   for (const t of targets) {
-    if (Math.abs(value - t) <= threshold) return t;
+    if (Math.abs(v - t.at) <= threshold) return { at: t.at, line: t.at };
   }
-  return value;
+  return { at: v, line: null };
 }
 
 /**
- * Magnet snap for a dragged pane. Snaps x/y to window edges and the
- * edges of sibling panes. Hold Shift to bypass (handled by the caller).
+ * Magnet snap for a dragged pane. Snaps x/y to screen edges, screen
+ * thirds/center, and sibling edges. Hold Shift to bypass (caller-owned).
  */
+export function snapMove(
+  moving: PaneState,
+  siblings: PaneState[],
+  areaW: number,
+  areaH: number,
+): SnapResult {
+  const xs = [{ at: 0 }, { at: Math.max(0, Math.round(areaW - moving.w)) }];
+  const ys = [{ at: 0 }, { at: Math.max(0, Math.round(areaH - moving.h)) }];
+  for (const s of siblings) {
+    if (!s.visible || s.id === moving.id) continue;
+    xs.push({ at: Math.round(s.x) }, { at: Math.round(s.x + s.w) }, { at: Math.round(s.x - moving.w) }, {
+      at: Math.round(s.x + s.w - moving.w),
+    });
+    ys.push({ at: Math.round(s.y) }, { at: Math.round(s.y + s.h) }, { at: Math.round(s.y - moving.h) }, {
+      at: Math.round(s.y + s.h - moving.h),
+    });
+  }
+  const sx = snapValue(moving.x, xs, SNAP_EDGE);
+  let x = sx.at;
+  const v: number[] = sx.line !== null ? [sx.line] : [];
+  if (sx.line === null) {
+    const zone = snapValue(moving.x, [
+      { at: Math.round(areaW / 2 - moving.w / 2) },
+      { at: Math.round(areaW / 3 - moving.w / 2) },
+      { at: Math.round((2 * areaW) / 3 - moving.w / 2) },
+    ], SNAP_ZONE);
+    x = zone.at;
+    if (zone.line !== null) v.push(zone.line);
+  }
+  const sy = snapValue(moving.y, ys, SNAP_EDGE);
+  let y = sy.at;
+  const h: number[] = sy.line !== null ? [sy.line] : [];
+  if (sy.line === null) {
+    const zone = snapValue(moving.y, [
+      { at: Math.round(areaH / 2 - moving.h / 2) },
+      { at: Math.round(areaH / 3 - moving.h / 2) },
+    ], SNAP_ZONE);
+    y = zone.at;
+    if (zone.line !== null) h.push(zone.line);
+  }
+  return { x: Math.max(0, x), y: Math.max(0, y), v, h };
+}
+
+export interface ResizeSnap {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  gv: number[];
+  gh: number[];
+}
+
+/**
+ * Magnet snap for a resized pane. Snaps the dragged edge(s) to screen
+ * edges and sibling edges so resizing docks as well as moving does.
+ */
+export function snapSize(
+  moving: PaneState,
+  siblings: PaneState[],
+  areaW: number,
+  areaH: number,
+  edges: { east: boolean; south: boolean; west: boolean; north: boolean },
+): ResizeSnap {
+  const gv: number[] = [];
+  const gh: number[] = [];
+  let { x, y, w, h: hh } = moving;
+  const rightTargets = [{ at: Math.round(areaW) }];
+  const bottomTargets = [{ at: Math.round(areaH) }];
+  const leftTargets = [{ at: 0 }];
+  const topTargets = [{ at: 0 }];
+  for (const s of siblings) {
+    if (!s.visible || s.id === moving.id) continue;
+    rightTargets.push({ at: Math.round(s.x) }, { at: Math.round(s.x + s.w) });
+    bottomTargets.push({ at: Math.round(s.y) }, { at: Math.round(s.y + s.h) });
+    leftTargets.push({ at: Math.round(s.x) }, { at: Math.round(s.x + s.w) });
+    topTargets.push({ at: Math.round(s.y) }, { at: Math.round(s.y + s.h) });
+  }
+  if (edges.east) {
+    const s = snapValue(x + w, rightTargets, SNAP_EDGE);
+    if (s.line !== null) {
+      w = Math.max(MIN_W, s.at - x);
+      gv.push(s.line);
+    }
+  }
+  if (edges.south) {
+    const s = snapValue(y + hh, bottomTargets, SNAP_EDGE);
+    if (s.line !== null) {
+      hh = Math.max(MIN_H, s.at - y);
+      gh.push(s.line);
+    }
+  }
+  if (edges.west) {
+    const s = snapValue(x, leftTargets, SNAP_EDGE);
+    if (s.line !== null) {
+      const right = x + w;
+      x = Math.min(s.at, right - MIN_W);
+      w = right - x;
+      gv.push(s.line);
+    }
+  }
+  if (edges.north) {
+    const s = snapValue(y, topTargets, SNAP_EDGE);
+    if (s.line !== null) {
+      const bottom = y + hh;
+      y = Math.min(s.at, bottom - MIN_H);
+      hh = bottom - y;
+      gh.push(s.line);
+    }
+  }
+  return { x, y, w, h: hh, gv, gh };
+}
+
+/** @deprecated Use snapMove. Kept one release for external callers. */
 export function snapPane(
   moving: PaneState,
   siblings: PaneState[],
   areaW: number,
   areaH: number,
 ): { x: number; y: number; snapped: boolean } {
-  const xs = [0, Math.max(0, areaW - moving.w)];
-  const ys = [0, Math.max(0, areaH - moving.h)];
-  for (const s of siblings) {
-    if (!s.visible || s.id === moving.id) continue;
-    xs.push(s.x, s.x + s.w, s.x - moving.w, s.x + s.w - moving.w);
-    ys.push(s.y, s.y + s.h, s.y - moving.h, s.y + s.h - moving.h);
-  }
-  const x = snapOne(Math.round(moving.x), xs, SNAP_EDGE);
-  const zoneTargets = [Math.round(areaW / 2 - moving.w / 2), Math.round(areaW / 3 - moving.w / 2)];
-  const x2 = x === moving.x ? snapOne(Math.round(moving.x), zoneTargets, SNAP_ZONE) : x;
-  const y = snapOne(Math.round(moving.y), ys, SNAP_EDGE);
-  return { x: Math.max(0, x2), y: Math.max(0, y), snapped: x2 !== moving.x || y !== moving.y };
+  const r = snapMove(moving, siblings, areaW, areaH);
+  return { x: r.x, y: r.y, snapped: r.v.length > 0 || r.h.length > 0 };
 }
