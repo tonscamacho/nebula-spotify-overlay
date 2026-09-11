@@ -14,7 +14,7 @@ pub const CLIENT_ID: &str = "38bf5383c2a84de1a829a91ebd140421";
 // Must match the redirect URI allowlisted in the Spotify dashboard exactly.
 pub const REDIRECT_URI: &str = "http://127.0.0.1:3000";
 const SCOPES: &str =
-    "user-read-playback-state user-read-currently-playing user-modify-playback-state";
+    "user-read-playback-state user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative user-library-read user-top-read user-read-recently-played user-read-private user-read-email user-follow-read";
 const KEYRING_SERVICE: &str = "spotify-overlay";
 const KEYRING_USER: &str = "refresh-token";
 

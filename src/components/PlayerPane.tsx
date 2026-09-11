@@ -63,7 +63,7 @@ export default function PlayerPane(p: Props) {
 
   if (!track) {
     return (
-      <div className="pane-body">
+      <>
         <div className="empty">
           <div className="empty-icon">
             <NoteIcon size={22} />
@@ -71,13 +71,13 @@ export default function PlayerPane(p: Props) {
           <div className="empty-title">Nothing playing</div>
           <div className="empty-sub">Start playback in Spotify and it shows here.</div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
     <div
-      className={`pane-body${tint ? " has-ambient" : ""}`}
+      className={`pane-fill${tint ? " has-ambient" : ""}`}
       style={tint ? ({ "--ambient": tint } as React.CSSProperties) : undefined}
     >
       <div className="track-row">

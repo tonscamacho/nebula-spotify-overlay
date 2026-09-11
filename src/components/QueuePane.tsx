@@ -11,7 +11,7 @@ interface Props {
 
 export default function QueuePane(p: Props) {
   return (
-    <div className="pane-body">
+    <>
       <div className="pane-subhead">
         <span>
           Up next
@@ -27,8 +27,10 @@ export default function QueuePane(p: Props) {
         </button>
       </div>
       {p.loading && p.upcoming.length === 0 ? (
-        <div className="empty">
-          <div className="empty-title">Loading queue…</div>
+        <div aria-label="Loading queue" role="status">
+          <div className="skel skel-row" />
+          <div className="skel skel-row" />
+          <div className="skel skel-row" />
         </div>
       ) : p.upcoming.length === 0 ? (
         <div className="empty">
@@ -49,6 +51,6 @@ export default function QueuePane(p: Props) {
           ))}
         </ol>
       )}
-    </div>
+    </>
   );
 }

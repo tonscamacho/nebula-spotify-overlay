@@ -27,7 +27,7 @@
         "resizable": true,
         "maximizable": true,
         "visible": true,
-        "focus": true
+        "focus": false
       }
     ],
     "security": {

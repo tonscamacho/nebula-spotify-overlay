@@ -5,8 +5,24 @@ const LEGACY_KEYS = ["snapify-layout-v2", "nebula-layout-v1"];
 export const SNAP_EDGE = 8;
 export const SNAP_ZONE = 16;
 export const DEFAULT_OPACITY = 0.92;
+/** Global fallback floor for unknown pane types. */
 export const MIN_W = 240;
 export const MIN_H = 120;
+
+/** Content floors per pane type. One global minimum forced dead
+ *  space in small panes and clipping in browse, so each pane gets
+ *  the smallest size its own chrome can survive. */
+export const PANE_MIN: Record<PaneType, { w: number; h: number }> = {
+  player: { w: 280, h: 190 },
+  lyrics: { w: 280, h: 200 },
+  queue: { w: 260, h: 180 },
+  visualizer: { w: 260, h: 170 },
+  browse: { w: 300, h: 340 },
+};
+
+export function getPaneMin(type: PaneType): { w: number; h: number } {
+  return PANE_MIN[type] ?? { w: MIN_W, h: MIN_H };
+}
 
 function pane(id: string, type: PaneType, x: number, y: number, w: number, h: number, z: number): PaneState {
   return { id, type, x, y, w, h, opacity: DEFAULT_OPACITY, visible: true, z };
@@ -31,7 +47,7 @@ export const PRESETS: Record<string, () => LayoutState> = {
     preset: "lyrics",
     panes: [
       pane("lyrics", "lyrics", 24, 24, 420, 380, 1),
-      pane("player", "player", 24, 416, 420, 150, 2),
+      pane("player", "player", 24, 416, 420, 190, 2),
     ],
   }),
   spotlight: () => ({
@@ -95,15 +111,16 @@ function num(v: unknown, fallback: number): number {
 }
 
 function coercePane(raw: Partial<PaneState>, z: number): PaneState | null {
-  const types = ["player", "lyrics", "queue", "visualizer"];
+  const types = ["player", "lyrics", "queue", "visualizer", "browse"];
   if (!raw || typeof raw.id !== "string" || !types.includes(raw.type as string)) return null;
+  const min = getPaneMin(raw.type as PaneType);
   return {
     id: raw.id,
     type: raw.type as PaneState["type"],
     x: Math.max(0, Math.round(num(raw.x, 24))),
     y: Math.max(0, Math.round(num(raw.y, 24))),
-    w: Math.max(MIN_W, Math.round(num(raw.w, 340))),
-    h: Math.max(MIN_H, Math.round(num(raw.h, 220))),
+    w: Math.max(min.w, Math.round(num(raw.w, 340))),
+    h: Math.max(min.h, Math.round(num(raw.h, 220))),
     opacity: Math.min(1, Math.max(0.4, num(raw.opacity, DEFAULT_OPACITY))),
     visible: raw.visible !== false,
     z: num(raw.z, z),
@@ -149,15 +166,28 @@ export function saveLayout(layout: LayoutState): void {
   }
 }
 
-/** Clamp a restored layout into the live window so panes never strand off-screen. */
-export function clampLayoutToArea(layout: LayoutState, areaW: number, areaH: number): LayoutState {
-  const panes = layout.panes.map((p) => ({
-    ...p,
-    w: Math.min(p.w, Math.max(MIN_W, Math.floor(areaW) - 16)),
-    h: Math.min(p.h, Math.max(MIN_H, Math.floor(areaH) - 16)),
-    x: Math.min(Math.max(0, p.x), Math.max(0, Math.floor(areaW) - MIN_W)),
-    y: Math.min(Math.max(0, p.y), Math.max(0, Math.floor(areaH) - 120)),
-  }));
+/** Clamp a restored layout into the live window so panes never strand off-screen.
+ *  Areas are divided by uiScale because the stage renders under a zoom
+ *  wrapper while layout state stays in logical px. */
+export function clampLayoutToArea(
+  layout: LayoutState,
+  areaW: number,
+  areaH: number,
+  uiScale = 1,
+): LayoutState {
+  const k = uiScale || 1;
+  const W = Math.floor(areaW / k);
+  const H = Math.floor(areaH / k);
+  const panes = layout.panes.map((p) => {
+    const min = getPaneMin(p.type);
+    return {
+      ...p,
+      w: Math.min(p.w, Math.max(min.w, W - 16)),
+      h: Math.min(p.h, Math.max(min.h, H - 16)),
+      x: Math.min(Math.max(0, p.x), Math.max(0, W - min.w)),
+      y: Math.min(Math.max(0, p.y), Math.max(0, H - 120)),
+    };
+  });
   return { ...layout, panes };
 }
 
@@ -248,6 +278,7 @@ export function snapSize(
   const gv: number[] = [];
   const gh: number[] = [];
   let { x, y, w, h: hh } = moving;
+  const min = getPaneMin(moving.type);
   const rightTargets = [{ at: Math.round(areaW) }];
   const bottomTargets = [{ at: Math.round(areaH) }];
   const leftTargets = [{ at: 0 }];
@@ -262,14 +293,14 @@ export function snapSize(
   if (edges.east) {
     const s = snapValue(x + w, rightTargets, SNAP_EDGE);
     if (s.line !== null) {
-      w = Math.max(MIN_W, s.at - x);
+      w = Math.max(min.w, s.at - x);
       gv.push(s.line);
     }
   }
   if (edges.south) {
     const s = snapValue(y + hh, bottomTargets, SNAP_EDGE);
     if (s.line !== null) {
-      hh = Math.max(MIN_H, s.at - y);
+      hh = Math.max(min.h, s.at - y);
       gh.push(s.line);
     }
   }
@@ -277,7 +308,7 @@ export function snapSize(
     const s = snapValue(x, leftTargets, SNAP_EDGE);
     if (s.line !== null) {
       const right = x + w;
-      x = Math.min(s.at, right - MIN_W);
+      x = Math.min(s.at, right - min.w);
       w = right - x;
       gv.push(s.line);
     }
@@ -286,7 +317,7 @@ export function snapSize(
     const s = snapValue(y, topTargets, SNAP_EDGE);
     if (s.line !== null) {
       const bottom = y + hh;
-      y = Math.min(s.at, bottom - MIN_H);
+      y = Math.min(s.at, bottom - min.h);
       hh = bottom - y;
       gh.push(s.line);
     }

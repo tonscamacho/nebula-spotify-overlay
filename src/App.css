@@ -443,6 +443,25 @@ select:focus-visible,
   opacity: 0.2;
 }
 
+.pane-fill.has-ambient {
+  position: relative;
+  z-index: 0;
+}
+
+.pane-fill.has-ambient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(170px 130px at 18% 0%, var(--ambient) 0%, transparent 70%);
+  opacity: 0.32;
+}
+
+.app[data-theme="light"] .pane-fill.has-ambient::before {
+  opacity: 0.2;
+}
+
 /* ---------- buttons ---------- */
 
 .btn {
@@ -1016,6 +1035,8 @@ select:focus-visible,
 /* ---------- light preset ---------- */
 
 .app[data-theme="light"] {
+  --skel: rgba(12, 17, 26, 0.08);
+  --skel-hi: rgba(12, 17, 26, 0.16);
   --ground: #e9ebf1;
   --glass: rgba(255, 255, 255, 0.68);
   --glass-solid: rgba(252, 253, 255, 0.95);
@@ -1092,4 +1113,334 @@ select:focus-visible,
 
 .app[data-theme="light"] .modal {
   box-shadow: 0 24px 64px rgba(30, 40, 70, 0.22);
+}
+
+/* ---------- browse pane ---------- */
+
+.browse-tabs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 2px 0 8px;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  background: transparent;
+  color: var(--txt);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.browse-row {
+  align-items: center;
+}
+
+.browse-thumb {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 0;
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #141a24;
+  cursor: pointer;
+}
+
+.browse-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.browse-thumb .cover-fallback {
+  width: 100%;
+  height: 100%;
+}
+
+.browse-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--txt);
+  font: inherit;
+}
+
+.detail-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 4px 0 8px;
+}
+
+.detail-head img {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex: none;
+  background: #141a24;
+}
+
+.detail-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.detail-head .btn {
+  margin-top: 6px;
+}
+
+/* ---------- adaptive system ---------- */
+
+:root {
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --pad-pane: clamp(8px, 4cqw, 16px);
+  --row-py: 8px;
+  --cover: clamp(40px, 18cqw, 56px);
+  --thumb: 36px;
+  --detail-art: clamp(48px, 20cqw, 64px);
+  --fs-title: clamp(14px, 5cqw, 17px);
+  --skel: rgba(255, 255, 255, 0.08);
+  --skel-hi: rgba(255, 255, 255, 0.16);
+}
+
+.pane {
+  container-type: inline-size;
+}
+
+.pane[data-pane="player"] { min-width: 280px; min-height: 190px; }
+.pane[data-pane="lyrics"] { min-width: 280px; min-height: 200px; }
+.pane[data-pane="queue"] { min-width: 260px; min-height: 180px; }
+.pane[data-pane="visualizer"] { min-width: 260px; min-height: 170px; }
+.pane[data-pane="browse"] { min-width: 300px; min-height: 340px; }
+
+.pane[data-density="compact"] {
+  --row-py: 5px;
+  --pad-pane: clamp(6px, 3cqw, 12px);
+  --thumb: 30px;
+}
+
+.pane[data-density="spacious"] {
+  --row-py: 12px;
+  --pad-pane: clamp(12px, 5cqw, 20px);
+}
+
+/* One scroller per pane. Inner lists fill instead of nesting. */
+.pane-body {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: var(--pad-pane);
+}
+
+/* Plain inner wrapper: carries ambient tint and fills the pane
+ * without adding padding or a second scroll container. */
+.pane-fill {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.lyrics,
+.plain,
+.queue {
+  max-height: none;
+  overflow: visible;
+}
+
+/* Ambient bleed must never enlarge scrollable overflow. */
+.pane-body.has-ambient::before,
+.pane-fill.has-ambient::before {
+  inset: 0;
+}
+
+/* Resize handles dock at the edge with an invisible grab halo. */
+.rz-e, .rz-ne, .rz-se { right: 0; }
+.rz-w, .rz-nw, .rz-sw { left: 0; }
+.rz-n, .rz-ne, .rz-nw { top: 0; }
+.rz-s, .rz-se, .rz-sw { bottom: 0; }
+.rz::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+/* Sticky section chrome floats over the single scroller. */
+.pane-subhead,
+.lyrics-meta,
+.viz-meta,
+.browse-tabs {
+  position: sticky;
+  top: calc(var(--pad-pane) * -1);
+  z-index: 2;
+  background: var(--glass-solid, rgba(20, 24, 30, 0.9));
+  margin-inline: calc(var(--pad-pane) * -1);
+  padding: 8px var(--pad-pane) 6px;
+}
+
+/* Secondary row actions reveal on hover, always visible on touch. */
+.q .row-act {
+  opacity: 0;
+  translate: 4px 0;
+  transition: opacity 0.15s ease, translate 0.15s ease;
+}
+.q:hover .row-act,
+.q:focus-within .row-act {
+  opacity: 1;
+  translate: none;
+}
+@media (hover: none) {
+  .q .row-act {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+/* Fluid media and type. */
+.cover {
+  width: var(--cover);
+  height: var(--cover);
+  aspect-ratio: 1;
+}
+.track-title {
+  font-size: var(--fs-title);
+}
+.browse-thumb {
+  width: var(--thumb);
+  height: var(--thumb);
+}
+.browse-row .q-time {
+  flex: none;
+}
+.detail-head > div {
+  min-width: 0;
+}
+.detail-head img {
+  width: var(--detail-art);
+  height: var(--detail-art);
+}
+.detail-title {
+  font-size: var(--fs-title);
+  overflow-wrap: anywhere;
+}
+.device-row,
+.device {
+  min-width: 0;
+}
+.viz {
+  width: 100%;
+  height: clamp(90px, 30cqw, 180px);
+  display: block;
+}
+
+/* Active lyric keeps base size so lines never reflow on change. */
+.line.on {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Lean empty states for short panes. */
+.empty {
+  padding: 16px 8px;
+}
+.pane[data-density="compact"] .empty {
+  padding: 10px 8px;
+}
+
+/* Skeleton rows replace loading text. */
+@keyframes skel {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skel {
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--skel) 25%,
+    var(--skel-hi) 50%,
+    var(--skel) 75%
+  );
+  background-size: 200% 100%;
+  animation: skel 1.2s infinite linear;
+}
+.skel-row {
+  height: 44px;
+  margin: 6px 0;
+}
+.skel-head {
+  height: 76px;
+  margin: 4px 0 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    animation: none;
+  }
+}
+
+.q {
+  padding-top: var(--row-py);
+  padding-bottom: var(--row-py);
+}
+
+.browse-tabs .sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--stroke);
+  margin-inline: 2px;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Narrow panes shed secondary chrome before titles clip. */
+@container (max-width: 330px) {
+  .q-time,
+  .q-index,
+  .q-name small,
+  .lyrics-meta .cached,
+  .times span:last-child {
+    display: none;
+  }
+  .browse-thumb {
+    width: 28px;
+    height: 28px;
+  }
+  .vol {
+    width: 56px;
+  }
+}
+
+/* Wide panes spend the space on art, not blank bands. */
+@container (min-width: 480px) {
+  .cover {
+    width: 64px;
+    height: 64px;
+  }
+  .browse-thumb {
+    width: 44px;
+    height: 44px;
+  }
 }

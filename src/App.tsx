@@ -7,6 +7,7 @@ import PlayerPane from "./components/PlayerPane";
 import LyricsPane from "./components/LyricsPane";
 import QueuePane from "./components/QueuePane";
 import VisualizerPane from "./components/VisualizerPane";
+import BrowsePane from "./components/BrowsePane";
 import SettingsModal from "./components/SettingsModal";
 import {
   ListIcon,
@@ -17,17 +18,21 @@ import {
   XIcon,
 } from "./components/icons";
 import { api, parsePlayer } from "./lib/spotify";
+import { initialBrowse } from "./lib/browse";
 import type { TransLang } from "./lib/translate";
 import {
   PRESETS,
   clampLayoutToArea,
   defaultLayoutFor,
+  getPaneMin,
   loadLayout,
   saveLayout,
   snapMove,
   snapSize,
 } from "./lib/layout";
 import type {
+  BrowseState,
+  Density,
   DeviceInfo,
   LyricsState,
   PaneState,
@@ -51,7 +56,7 @@ const EMPTY_SNAP: PlayerSnapshot = {
 };
 
 const PRESET_ORDER = ["minimal", "full", "lyrics", "spotlight"];
-const PANE_TYPES: PaneType[] = ["player", "lyrics", "queue", "visualizer"];
+const PANE_TYPES: PaneType[] = ["player", "lyrics", "queue", "visualizer", "browse"];
 type Handle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 const HANDLES: Handle[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 
@@ -60,6 +65,7 @@ const PANE_TITLES: Record<PaneType, string> = {
   lyrics: "Lyrics",
   queue: "Queue",
   visualizer: "Visualizer",
+  browse: "Browse",
 };
 
 export default function App() {
@@ -74,23 +80,16 @@ export default function App() {
   });
   const [queueLoading, setQueueLoading] = useState(false);
   const [lyrics, setLyrics] = useState<LyricsState>({ kind: "idle" });
+  const [browse, setBrowse] = useState<BrowseState>(initialBrowse);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [layout, setLayout] = useState<PaneState[]>([]);
   const [preset, setPreset] = useState("full");
-  const [editMode, setEditMode] = useState(false);
+  const [interactive, setInteractive] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
-  const [hintSeen, setHintSeen] = useState(() => {
-    try {
-      return localStorage.getItem("snapify-hint-seen") === "1";
-    } catch {
-      return true;
-    }
-  });
   const [uiScale, setUiScale] = useState(1);
-  const [clickThrough, setClickThrough] = useState(false);
   const [clickToSeek, setClickToSeek] = useState(true);
   const [wordKaraoke, setWordKaraoke] = useState(() => {
     try {
@@ -117,6 +116,14 @@ export default function App() {
         : "dark";
     } catch {
       return "dark";
+    }
+  });
+  const [density, setDensity] = useState<Density>(() => {
+    try {
+      const v = localStorage.getItem("snapify-density");
+      return v === "compact" || v === "spacious" ? v : "default";
+    } catch {
+      return "default";
     }
   });
   const [ambientTint, setAmbientTint] = useState(() => {
@@ -242,7 +249,7 @@ export default function App() {
     const hgt = window.innerHeight || 800;
     const saved = loadLayout();
     if (saved) {
-      const clamped = clampLayoutToArea(saved, w, hgt);
+      const clamped = clampLayoutToArea(saved, w, hgt, uiScaleRef.current);
       setLayout(clamped.panes);
       setPreset(saved.preset);
       if (clamped !== saved) persist(clamped.panes, saved.preset);
@@ -322,65 +329,40 @@ export default function App() {
     }
   }, [snap.track, fetchLyrics, fetchQueue]);
 
-  // Click-through follows lock state. Empty canvas always passes clicks to
-  // the app below once ignore is on; panes need edit mode or toggle-off.
-  const locked = !editMode;
+  // Passive display mode stays visible on top but passes every mouse event
+  // to the game or window below. Interactive mode takes input for presses,
+  // drags, and settings. The window is never hidden on toggle, which is
+  // what flashed exclusive-fullscreen games.
   useEffect(() => {
-    void getCurrentWindow()
-      .setIgnoreCursorEvents(clickThrough && locked)
-      .catch(() => {});
-  }, [clickThrough, locked]);
+    const shouldIgnore = loggedIn && !interactive && !settingsOpen;
+    void getCurrentWindow().setIgnoreCursorEvents(shouldIgnore).catch(() => {});
+  }, [loggedIn, interactive, settingsOpen]);
 
-  const enterEdit = useCallback(() => {
-    setEditMode(true);
-    setHintSeen(true);
-    try {
-      localStorage.setItem("snapify-hint-seen", "1");
-    } catch {
-      // Private mode. Hint returns next session.
-    }
-  }, []);
-
-  // In-app shortcuts.
+  // In-app shortcuts. Shift+Tab, Ctrl+Alt+E/P/N arrive as Tauri events
+  // from the global shortcuts even while focused, so they are handled only
+  // there to avoid double-firing. This listener keeps Esc, the focused-only
+  // preset cycle, and the legacy click-through key.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.shiftKey && e.key === "Tab" && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        void getCurrentWindow().hide();
-        return;
-      }
-      if (e.key === "Escape" && editMode) {
-        setEditMode(false);
+      if (e.key === "Escape" && interactive) {
+        setInteractive(false);
         return;
       }
       if (!(e.ctrlKey && e.altKey)) return;
       const k = e.key.toLowerCase();
-      if (k === "e") {
-        e.preventDefault();
-        setEditMode((v) => !v);
-      } else if (k === "l") {
+      if (k === "l") {
         e.preventDefault();
         cyclePreset();
       } else if (k === "c") {
+        // Legacy binding: click-through toggle is now the interact toggle.
         e.preventDefault();
-        setClickThrough((v) => !v);
-      } else if (k === "p") {
-        e.preventDefault();
-        const s = snapRef.current;
-        if (s.track) {
-          void run(s.isPlaying ? () => api.pause(s.deviceId) : () => api.play(s.deviceId));
-        }
-      } else if (k === "n") {
-        e.preventDefault();
-        if (snapRef.current.track) {
-          void run(() => api.next(snapRef.current.deviceId));
-        }
+        setInteractive((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, preset, editMode]);
+  }, [layout, preset, interactive]);
 
   const run = useCallback(
     async (fn: () => Promise<unknown>, after?: () => void) => {
@@ -421,7 +403,7 @@ export default function App() {
       const i = PRESET_ORDER.indexOf(cur);
       const next = PRESET_ORDER[(i + 1 + PRESET_ORDER.length) % PRESET_ORDER.length];
       const nl = PRESETS[next]();
-      setLayout(clampLayoutToArea(nl, window.innerWidth, window.innerHeight).panes);
+      setLayout(clampLayoutToArea(nl, window.innerWidth, window.innerHeight, uiScaleRef.current).panes);
       persist(nl.panes, next);
       return next;
     });
@@ -431,7 +413,7 @@ export default function App() {
     (name: string) => {
       if (!PRESETS[name]) return;
       const nl = PRESETS[name]();
-      const panes = clampLayoutToArea(nl, window.innerWidth, window.innerHeight).panes;
+      const panes = clampLayoutToArea(nl, window.innerWidth, window.innerHeight, uiScaleRef.current).panes;
       setLayout(panes);
       setPreset(name);
       persist(panes, name);
@@ -460,6 +442,7 @@ export default function App() {
         } else {
           const z = l.reduce((m, x) => Math.max(m, x.z), 0) + 1;
           const n = l.length;
+          const min = getPaneMin(type);
           panes = [
             ...l,
             {
@@ -467,8 +450,8 @@ export default function App() {
               type,
               x: 40 + n * 32,
               y: 40 + n * 32,
-              w: type === "lyrics" ? 420 : 340,
-              h: type === "lyrics" ? 380 : 230,
+              w: Math.max(min.w, type === "lyrics" ? 420 : type === "browse" ? 380 : 340),
+              h: Math.max(min.h, type === "lyrics" ? 380 : type === "browse" ? 480 : 230),
               opacity: 0.92,
               visible: true,
               z,
@@ -495,11 +478,12 @@ export default function App() {
       if (!s.track) return;
       void run(() => api.next(s.deviceId));
     });
-    const offEdit = listen("shortcut-edit", () => setEditMode((v) => !v));
-    const offTrayEdit = listen("tray-toggle-edit", () => setEditMode((v) => !v));
+    const offToggle = listen("overlay-toggle-active", () => setInteractive((v) => !v));
+    const offEdit = listen("shortcut-edit", () => setInteractive((v) => !v));
+    const offTrayEdit = listen("tray-toggle-edit", () => setInteractive((v) => !v));
     const offTrayPreset = listen("tray-cycle-preset", () => cyclePreset());
     const offTraySettings = listen("tray-open-settings", () => setSettingsOpen(true));
-    const all = [offPlay, offNext, offEdit, offTrayEdit, offTrayPreset, offTraySettings];
+    const all = [offPlay, offNext, offToggle, offEdit, offTrayEdit, offTrayPreset, offTraySettings];
     return () => {
       for (const off of all) void off.then((f) => f());
     };
@@ -508,7 +492,7 @@ export default function App() {
   // Pane drag + 8-handle resize. Deltas are divided by uiScale because the
   // stage renders under a zoom wrapper while pointer events stay in screen px.
   const beginDrag = (e: React.PointerEvent, id: string, kind: "move" | Handle) => {
-    if (!editMode) return;
+    if (!interactive) return;
     e.stopPropagation();
     const pane = layout.find((x) => x.id === id);
     if (!pane) return;
@@ -546,6 +530,7 @@ export default function App() {
       const panes = l.map((x) => ({ ...x }));
       const m = panes.find((x) => x.id === d.id);
       if (!m) return l;
+      const min = getPaneMin(m.type);
       if (d.kind === "move") {
         m.x = Math.max(0, Math.round(d.origX + dx));
         m.y = Math.max(0, Math.round(d.origY + dy));
@@ -562,23 +547,23 @@ export default function App() {
         let ny = d.origY;
         let nw = d.origW;
         let nh = d.origH;
-        if (d.kind.includes("e")) nw = Math.max(240, Math.round(d.origW + dx));
-        if (d.kind.includes("s")) nh = Math.max(120, Math.round(d.origH + dy));
+        if (d.kind.includes("e")) nw = Math.max(min.w, Math.round(d.origW + dx));
+        if (d.kind.includes("s")) nh = Math.max(min.h, Math.round(d.origH + dy));
         if (d.kind.includes("w")) {
           nx = Math.round(d.origX + dx);
           nw = Math.round(d.origW - dx);
-          if (nw < 240) {
-            nx -= 240 - nw;
-            nw = 240;
+          if (nw < min.w) {
+            nx -= min.w - nw;
+            nw = min.w;
           }
           nx = Math.max(0, nx);
         }
         if (d.kind.includes("n")) {
           ny = Math.round(d.origY + dy);
           nh = Math.round(d.origH - dy);
-          if (nh < 120) {
-            ny -= 120 - nh;
-            nh = 120;
+          if (nh < min.h) {
+            ny -= min.h - nh;
+            nh = min.h;
           }
           ny = Math.max(0, ny);
         }
@@ -630,15 +615,17 @@ export default function App() {
     return (
       <section
         key={pane.id}
-        className={`pane${editMode ? " editing" : ""}`}
+        className={`pane${interactive ? " editing" : ""}`}
+        data-pane={pane.type}
+        data-density={density}
         style={{ left: pane.x, top: pane.y, width: pane.w, height: pane.h, zIndex: pane.z, opacity: pane.opacity }}
         onPointerDown={(e) => {
-          if (editMode) e.stopPropagation();
+          if (interactive) e.stopPropagation();
         }}
       >
         <header className="pane-handle" onPointerDown={(e) => beginDrag(e, pane.id, "move")}>
           <span className="pane-title">{PANE_TITLES[pane.type]}</span>
-          {editMode && (
+          {interactive && (
             <>
               <input
                 className="pane-op"
@@ -704,8 +691,23 @@ export default function App() {
           {pane.type === "visualizer" && (
             <VisualizerPane isPlaying={snap.isPlaying} seed={snap.track?.id ?? null} />
           )}
+          {pane.type === "browse" && (
+            <BrowsePane
+              state={browse}
+              deviceId={snap.deviceId}
+              onChange={setBrowse}
+              onPlayContext={(uri) => void run(() => api.playContext(uri, snap.deviceId))}
+              onPlayUris={(uris) => void run(() => api.playUris(uris, snap.deviceId))}
+              onQueueAdd={(uri) =>
+                void run(() => api.queueAdd(uri, snap.deviceId), () => {
+                  void fetchQueue();
+                })
+              }
+              onError={(m) => flashErr(m)}
+            />
+          )}
         </div>
-        {editMode &&
+        {interactive &&
           HANDLES.map((hh) => (
             <div
               key={hh}
@@ -741,8 +743,7 @@ export default function App() {
             onPointerUp={onStageUp}
             onDoubleClick={(e) => {
               if (e.target === e.currentTarget) {
-                if (editMode) setEditMode(false);
-                else enterEdit();
+                setInteractive(false);
               }
             }}
           >
@@ -757,13 +758,13 @@ export default function App() {
         </div>
       )}
 
-      {editMode && loggedIn && (
+      {interactive && loggedIn && (
         <div className="dock" role="toolbar" aria-label="Overlay editor">
           <button
             className="tbtn"
-            onClick={() => setEditMode(false)}
-            title="Lock panes (Esc)"
-            aria-label="Lock panes"
+            onClick={() => setInteractive(false)}
+            title="Pass through to game (Esc)"
+            aria-label="Pass through to game"
           >
             <LockIcon size={15} />
           </button>
@@ -800,9 +801,9 @@ export default function App() {
           </button>
           <button
             className="tbtn"
-            onClick={() => void getCurrentWindow().hide()}
-            title="Hide overlay (Shift+Tab)"
-            aria-label="Hide overlay"
+            onClick={() => setInteractive(false)}
+            title="Pass through (Shift+Tab)"
+            aria-label="Pass through to game"
           >
             <UnlockIcon size={15} />
           </button>
@@ -817,12 +818,6 @@ export default function App() {
         </div>
       )}
 
-      {loggedIn && !editMode && !hintSeen && (
-        <button className="hint-chip" onClick={enterEdit}>
-          Double-click anywhere to arrange panes · Esc to lock
-        </button>
-      )}
-
       {err && <div className="toast">{err}</div>}
 
       <SettingsModal
@@ -831,9 +826,10 @@ export default function App() {
         preset={preset}
         uiScale={uiScale}
         theme={theme}
+        density={density}
         ambientTint={ambientTint}
         autostart={autostart}
-        clickThrough={clickThrough}
+        interactive={interactive}
         clickToSeek={clickToSeek}
         wordKaraoke={wordKaraoke}
         transLang={transLang}
@@ -845,6 +841,14 @@ export default function App() {
             localStorage.setItem("snapify-theme", v);
           } catch {
             // Private mode. Theme lasts the session.
+          }
+        }}
+        onDensity={(v) => {
+          setDensity(v);
+          try {
+            localStorage.setItem("snapify-density", v);
+          } catch {
+            // Private mode. Density lasts the session.
           }
         }}
         onAmbientTint={(v) => {
@@ -862,7 +866,7 @@ export default function App() {
             flashErr(e instanceof Error ? e.message : String(e));
           });
         }}
-        onClickThrough={setClickThrough}
+        onInteractToggle={() => setInteractive((v) => !v)}
         onClickToSeek={setClickToSeek}
         onWordKaraoke={(v) => {
           setWordKaraoke(v);

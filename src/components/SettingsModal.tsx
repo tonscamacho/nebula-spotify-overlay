@@ -1,4 +1,5 @@
 import { TRANS_LANGS, type TransLang } from "../lib/translate";
+import type { Density } from "../lib/types";
 import { XIcon } from "./icons";
 
 interface Props {
@@ -7,18 +8,20 @@ interface Props {
   preset: string;
   uiScale: number;
   theme: "dark" | "light";
+  density: Density;
   ambientTint: boolean;
   autostart: boolean;
-  clickThrough: boolean;
+  interactive: boolean;
   clickToSeek: boolean;
   wordKaraoke: boolean;
   transLang: TransLang;
   onPreset: (name: string) => void;
   onUiScale: (v: number) => void;
   onTheme: (v: "dark" | "light") => void;
+  onDensity: (v: Density) => void;
   onAmbientTint: (v: boolean) => void;
   onAutostart: (v: boolean) => void;
-  onClickThrough: (v: boolean) => void;
+  onInteractToggle: () => void;
   onClickToSeek: (v: boolean) => void;
   onWordKaraoke: (v: boolean) => void;
   onTransLang: (v: TransLang) => void;
@@ -56,6 +59,20 @@ export default function SettingsModal(p: Props) {
                 key={n}
                 className={p.theme === n ? "seg-on" : ""}
                 onClick={() => p.onTheme(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </span>
+        </label>
+        <label className="row">
+          <span>Density</span>
+          <span className="seg">
+            {(["compact", "default", "spacious"] as const).map((n) => (
+              <button
+                key={n}
+                className={p.density === n ? "seg-on" : ""}
+                onClick={() => p.onDensity(n)}
               >
                 {n}
               </button>
@@ -103,16 +120,16 @@ export default function SettingsModal(p: Props) {
           />
         </label>
         <label className="row">
-          <span>Click through when locked</span>
-          <input
-            type="checkbox"
-            checked={p.clickThrough}
-            onChange={(e) => p.onClickThrough(e.target.checked)}
-          />
+          <span>{p.interactive ? "Mode: interactive" : "Mode: pass-through"}</span>
+          <button className="btn sm" onClick={p.onInteractToggle}>
+            {p.interactive ? "Pass through" : "Interact"}
+          </button>
         </label>
         <div className="hint">
-          Click-through passes mouse events to windows below. Refocus this window from the
-          taskbar and press Ctrl+Alt+C to turn it back off.
+          Pass-through keeps the overlay visible on top while all mouse input
+          goes to the game or window below. Press Shift+Tab, Ctrl+Alt+E, or
+          use the tray to interact again. Mouse alone cannot re-enter while
+          passing through.
         </div>
         <label className="row">
           <span>Click lyric to seek</span>
@@ -157,8 +174,9 @@ export default function SettingsModal(p: Props) {
           </button>
         </label>
         <div className="hint">
-          Each pane has its own opacity slider in its header while editing (double-click
-          the canvas, or Ctrl+Alt+E).
+          Each pane has its own opacity slider in its header while interactive
+          (Shift+Tab, Ctrl+Alt+E, or the tray). Double-click empty canvas or
+          Esc returns to pass-through.
         </div>
         <div className="hint">Shortcuts work everywhere, even over a game:</div>
         <div className="keys">
@@ -171,7 +189,7 @@ export default function SettingsModal(p: Props) {
             <span className="kbd">Ctrl+Alt+N</span>
           </div>
           <div>
-            <span>Show / Hide overlay</span>
+            <span>Interact / Pass through</span>
             <span className="kbd">Shift+Tab</span>
           </div>
           <div>
@@ -183,7 +201,7 @@ export default function SettingsModal(p: Props) {
             <span className="kbd">Ctrl+Alt+L</span>
           </div>
           <div>
-            <span>Click-through (window focused)</span>
+            <span>Interact toggle, legacy (window focused)</span>
             <span className="kbd">Ctrl+Alt+C</span>
           </div>
         </div>

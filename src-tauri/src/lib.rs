@@ -12,22 +12,22 @@ use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 
-fn toggle_visible(app: &tauri::AppHandle) {
+fn toggle_interactive(app: &tauri::AppHandle) {
+    // Never hide the window here. Hiding/showing a maximized always-on-top
+    // transparent window drops exclusive-fullscreen games out of focus and
+    // flashes the desktop compositor. Keep the window visible and let the
+    // frontend flip click-through instead.
     if let Some(win) = app.get_webview_window("main") {
-        match win.is_visible() {
-            Ok(true) => {
-                let _ = win.hide();
-            }
-            _ => {
-                let _ = win.show();
-                let _ = win.set_focus();
-            }
+        if !win.is_visible().unwrap_or(true) {
+            let _ = win.show();
         }
+        // Deliberately no set_focus: focusing steals the game on every toggle.
     }
+    let _ = app.emit("overlay-toggle-active", ());
 }
 
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let show_hide = MenuItem::with_id(app, "show-hide", "Show / Hide", true, None::<&str>)?;
+    let show_hide = MenuItem::with_id(app, "show-hide", "Interact / Pass through", true, None::<&str>)?;
     let edit = MenuItem::with_id(app, "toggle-edit", "Toggle edit lock", true, None::<&str>)?;
     let preset = MenuItem::with_id(app, "cycle-preset", "Cycle preset", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "open-settings", "Settings", true, None::<&str>)?;
@@ -48,7 +48,7 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show-hide" => toggle_visible(app),
+            "show-hide" => toggle_interactive(app),
             "toggle-edit" => {
                 let _ = app.emit("tray-toggle-edit", ());
             }
@@ -72,7 +72,7 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                toggle_visible(tray.app_handle());
+                toggle_interactive(tray.app_handle());
             }
         })
         .build(app)?;
@@ -120,7 +120,7 @@ pub fn run() {
                     } else if shortcut == &next {
                         let _ = app.emit("shortcut-next", ());
                     } else if shortcut == &vis {
-                        toggle_visible(app);
+                        toggle_interactive(app);
                     } else if shortcut == &edit {
                         let _ = app.emit("shortcut-edit", ());
                     }
@@ -130,6 +130,11 @@ pub fn run() {
         .manage(auth::AuthState::default())
         .setup(|app| {
             auth::restore_session(&app.handle());
+            // Boot click-through so a launch over a game never eats input
+            // before the frontend effect runs.
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_ignore_cursor_events(true);
+            }
             if let Err(e) = build_tray(&app.handle()) {
                 eprintln!("tray init failed: {e}");
             }
@@ -153,6 +158,24 @@ pub fn run() {
             spotify::set_repeat,
             spotify::transfer_playback,
             spotify::add_to_queue,
+            spotify::get_me,
+            spotify::get_user,
+            spotify::get_my_playlists,
+            spotify::get_user_playlists,
+            spotify::get_my_tracks,
+            spotify::get_my_albums,
+            spotify::get_followed_artists,
+            spotify::get_my_top,
+            spotify::get_recently_played,
+            spotify::get_playlist,
+            spotify::get_playlist_tracks,
+            spotify::get_artist,
+            spotify::get_artist_top,
+            spotify::get_artist_albums,
+            spotify::get_album,
+            spotify::search,
+            spotify::play_context,
+            spotify::play_uris,
             lyrics::get_lyrics,
             system::autostart_state,
             system::set_autostart,

@@ -74,26 +74,28 @@ export default function LyricsPane(p: Props) {
 
   if (p.lyrics.kind === "idle") {
     return (
-      <div className="pane-body">
+      <>
         <div className="empty">
           <div className="empty-title">Lyrics wait for music</div>
           <div className="empty-sub">Play a track to fetch synced lyrics.</div>
         </div>
-      </div>
+      </>
     );
   }
   if (p.lyrics.kind === "loading") {
     return (
-      <div className="pane-body">
-        <div className="empty">
-          <div className="empty-title">Finding lyrics…</div>
+      <>
+        <div aria-label="Finding lyrics" role="status">
+          <div className="skel skel-row" />
+          <div className="skel skel-row" />
+          <div className="skel skel-row" />
         </div>
-      </div>
+      </>
     );
   }
   if (p.lyrics.kind === "error") {
     return (
-      <div className="pane-body">
+      <>
         <div className="empty">
           <div className="empty-title">No synced lyrics</div>
           <div className="empty-sub">{p.lyrics.message}</div>
@@ -101,14 +103,14 @@ export default function LyricsPane(p: Props) {
             Retry
           </button>
         </div>
-      </div>
+      </>
     );
   }
 
   const d = p.lyrics.data;
   if (d.instrumental) {
     return (
-      <div className="pane-body">
+      <>
         <div className="empty">
           <div className="empty-icon">
             <NoteIcon size={22} />
@@ -116,20 +118,20 @@ export default function LyricsPane(p: Props) {
           <div className="empty-title">Instrumental</div>
           <div className="empty-sub">No words in this one.</div>
         </div>
-      </div>
+      </>
     );
   }
   if (!d.synced) {
     return (
-      <div className="pane-body">
-        <Meta>Unsynced{d.cached ? " · Cached" : ""}</Meta>
+      <>
+        <Meta>Unsynced{d.cached ? <span className="cached"> · Cached</span> : ""}</Meta>
         <div className="plain">{d.plain ?? "Lyrics text unavailable."}</div>
-      </div>
+      </>
     );
   }
   return (
-    <div className="pane-body">
-      <Meta>Synced{d.cached ? " · Cached" : ""}</Meta>
+    <>
+      <Meta>Synced{d.cached ? <span className="cached"> · Cached</span> : ""}</Meta>
       <div className="lyrics">
         {d.cues.map((c, i) => {
           const isActive = i === active;
@@ -171,6 +173,6 @@ export default function LyricsPane(p: Props) {
           );
         })}
       </div>
-    </div>
+    </>
   );
 }

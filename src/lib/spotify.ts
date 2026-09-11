@@ -137,6 +137,34 @@ export const api = {
     invoke("set_repeat", { mode, deviceId: device_id ?? null }),
   transfer: (device_id: string, play_now: boolean) =>
     invoke("transfer_playback", { deviceId: device_id, playNow: play_now }),
+  queueAdd: (uri: string, device_id?: string | null) =>
+    invoke("add_to_queue", { uri, deviceId: device_id ?? null }),
+  me: () => invoke<unknown>("get_me"),
+  user: (user_id: string) => invoke<unknown>("get_user", { userId: user_id }),
+  myPlaylists: (limit = 20, offset = 0) =>
+    invoke<unknown>("get_my_playlists", { limit, offset }),
+  userPlaylists: (user_id: string, limit = 20, offset = 0) =>
+    invoke<unknown>("get_user_playlists", { userId: user_id, limit, offset }),
+  savedTracks: (limit = 20, offset = 0) => invoke<unknown>("get_my_tracks", { limit, offset }),
+  savedAlbums: (limit = 20, offset = 0) => invoke<unknown>("get_my_albums", { limit, offset }),
+  followedArtists: (limit = 20, after?: string | null) =>
+    invoke<unknown>("get_followed_artists", { limit, after: after ?? null }),
+  top: (kind: string, limit = 10, offset = 0) =>
+    invoke<unknown>("get_my_top", { kind, limit, offset }),
+  recent: (limit = 10) => invoke<unknown>("get_recently_played", { limit }),
+  playlist: (playlist_id: string) => invoke<unknown>("get_playlist", { playlistId: playlist_id }),
+  playlistTracks: (playlist_id: string, limit = 50, offset = 0) =>
+    invoke<unknown>("get_playlist_tracks", { playlistId: playlist_id, limit, offset }),
+  artist: (artist_id: string) => invoke<unknown>("get_artist", { artistId: artist_id }),
+  artistTop: (artist_id: string) => invoke<unknown>("get_artist_top", { artistId: artist_id }),
+  artistAlbums: (artist_id: string, limit = 10, offset = 0) =>
+    invoke<unknown>("get_artist_albums", { artistId: artist_id, limit, offset }),
+  album: (album_id: string) => invoke<unknown>("get_album", { albumId: album_id }),
+  searchRaw: (query: string, limit = 5) => invoke<unknown>("search", { query, limit }),
+  playContext: (context_uri: string, device_id?: string | null) =>
+    invoke("play_context", { contextUri: context_uri, deviceId: device_id ?? null }),
+  playUris: (uris: string[], device_id?: string | null) =>
+    invoke("play_uris", { uris, deviceId: device_id ?? null }),
   lyrics: (p: {
     track_id: string;
     track_name: string;

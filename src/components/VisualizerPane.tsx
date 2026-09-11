@@ -55,9 +55,8 @@ export default function VisualizerPane(p: Props) {
         if (sig === lastStatic) return;
         lastStatic = sig;
       }
-      const parent = canvas.parentElement;
-      const w = parent ? parent.clientWidth - 32 : 300;
-      const h = 120;
+      const w = canvas.clientWidth > 0 ? canvas.clientWidth : 300;
+      const h = canvas.clientHeight > 0 ? canvas.clientHeight : 120;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
         canvas.width = Math.round(w * dpr);
@@ -98,7 +97,7 @@ export default function VisualizerPane(p: Props) {
 
   if (!p.seed) {
     return (
-      <div className="pane-body">
+      <>
         <div className="empty">
           <div className="empty-icon">
             <NoteIcon size={22} />
@@ -106,18 +105,18 @@ export default function VisualizerPane(p: Props) {
           <div className="empty-title">Visualizer waits for music</div>
           <div className="empty-sub">Play a track and it moves here.</div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="pane-body">
+    <>
       <div className="viz-meta">
         <span>{p.isPlaying ? "Live" : "Paused"}</span>
         <span className="viz-dot" data-on={p.isPlaying ? "1" : "0"} aria-hidden="true" />
       </div>
       <canvas ref={canvasRef} className="viz" aria-label="Playback visualizer" role="img" />
       <div className="hint viz-hint">Motion follows playback. Still when paused.</div>
-    </div>
+    </>
   );
 }
