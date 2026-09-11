@@ -38,8 +38,14 @@ interface Props {
 }
 
 function scopeHint(m: string): string | null {
+  const missing =
+    /missing permission "([^"]+)"/i.exec(m) ??
+    /Insufficient client scope:\s*([A-Za-z0-9_-]+)/.exec(m);
+  if (missing) {
+    return `Spotify is missing permission “${missing[1]}”. Log out in Settings, then login again.`;
+  }
   return /insufficient|scope|403/i.test(m)
-    ? "Spotify needs new permissions. Logout in Settings, then login again."
+    ? "Spotify needs new permissions. Log out in Settings, then login again."
     : null;
 }
 

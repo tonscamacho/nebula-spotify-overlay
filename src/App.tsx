@@ -884,7 +884,22 @@ export default function App() {
         </div>
       )}
 
-      {err && <div className="toast">{err}</div>}
+      {err && (
+        <div className="toast">
+          <span>{err}</span>
+          {/missing permission|new permissions/i.test(err) && (
+            <button
+              className="btn sm"
+              onClick={() => {
+                setErr(null);
+                void logout().finally(() => void login());
+              }}
+            >
+              Reconnect
+            </button>
+          )}
+        </div>
+      )}
 
       <SettingsModal
         open={settingsOpen}

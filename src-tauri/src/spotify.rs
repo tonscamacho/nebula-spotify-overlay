@@ -51,13 +51,51 @@ async fn send(
 
 async fn interpret(res: reqwest::Response) -> Result<serde_json::Value, String> {
     let status = res.status();
-    if status == StatusCode::TOO_MANY_REQUESTS {
-        let wait = res
-            .headers()
+    let retry_after = if status == StatusCode::TOO_MANY_REQUESTS {
+        res.headers()
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
-            .unwrap_or("2");
-        return Err(format!("rate-limited: retry after {wait}s"));
+            .map(|s| s.to_string())
+    } else {
+        None
+    };
+    let body = res.text().await.unwrap_or_default();
+    decide(status, retry_after.as_deref(), &body)
+}
+
+fn trim_snippet(body: &str) -> String {
+    // Spotify gateway errors arrive as HTML pages. Trim them so the
+    // overlay toast never dumps markup like the 411 page did.
+    let short = body
+        .replace(|c: char| c.is_whitespace(), " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    short.chars().take(220).collect()
+}
+
+fn missing_scope(body: &str) -> Option<String> {
+    // Spotify: {"error":{"status":403,"message":"Insufficient client scope: user-top-read"}}
+    let marker = "Insufficient client scope:";
+    let at = body.find(marker)?;
+    body[at + marker.len()..]
+        .split(|c| c == '"' || c == '\'' || c == '}' || c == ',')
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+        .map(|s| s.to_string())
+}
+
+fn decide(
+    status: StatusCode,
+    retry_after: Option<&str>,
+    body: &str,
+) -> Result<serde_json::Value, String> {
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        return Err(format!(
+            "rate-limited: retry after {}s",
+            retry_after.unwrap_or("2")
+        ));
     }
     if status == StatusCode::NO_CONTENT || status == StatusCode::NOT_FOUND {
         return Ok(serde_json::json!({ "empty": true }));
@@ -69,22 +107,24 @@ async fn interpret(res: reqwest::Response) -> Result<serde_json::Value, String> 
         return Err("spotify rejected the request length (411). Update the app and retry.".into());
     }
     if !status.is_success() {
-        let body = res.text().await.unwrap_or_default();
-        // Spotify gateway errors arrive as HTML pages. Trim them so the
-        // overlay toast never dumps markup like the 411 page did.
-        let short = body
-            .replace(|c: char| c.is_whitespace(), " ")
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
-        let short: String = short.chars().take(220).collect();
-        return Err(format!("spotify {status}: {short}"));
+        if status == StatusCode::FORBIDDEN {
+            if let Some(scope) = missing_scope(body) {
+                return Err(format!(
+                    "spotify 403 Forbidden: missing permission \"{scope}\" — logout and login again to grant it"
+                ));
+            }
+        }
+        return Err(format!("spotify {status}: {}", trim_snippet(body)));
     }
-    let text = res.text().await.map_err(|e| e.to_string())?;
-    if text.trim().is_empty() {
+    if body.trim().is_empty() {
         return Ok(serde_json::json!({ "empty": true }));
     }
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+    serde_json::from_str(body).map_err(|_| {
+        format!(
+            "spotify {status}: unexpected response (not JSON): {}",
+            trim_snippet(body)
+        )
+    })
 }
 
 #[tauri::command]
@@ -459,4 +499,65 @@ pub async fn play_uris(
     };
     let body = serde_json::json!({ "uris": uris });
     call(&app, Method::PUT, "/me/player/play", &q, Some(body)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decide;
+    use reqwest::StatusCode;
+
+    #[test]
+    fn serde_mechanism_matches_user_screenshot() {
+        // Proves the pre-fix toast text came from this path: a non-JSON
+        // 2xx body surfaces the raw serde error verbatim.
+        let raw: Result<serde_json::Value, _> =
+            serde_json::from_str("<html><body>gateway</body></html>");
+        assert_eq!(
+            raw.unwrap_err().to_string(),
+            "expected value at line 1 column 1"
+        );
+    }
+
+    #[test]
+    fn html_body_on_success_does_not_leak_serde_error() {
+        let err =
+            decide(StatusCode::OK, None, "<html><body>gateway</body></html>").unwrap_err();
+        assert!(
+            !err.contains("line 1 column 1"),
+            "raw serde error leaked: {err}"
+        );
+        assert!(err.contains("not JSON"), "unfriendly: {err}");
+    }
+
+    #[test]
+    fn forbidden_names_missing_scope() {
+        let body =
+            r#"{"error":{"status":403,"message":"Insufficient client scope: user-top-read"}}"#;
+        let err = decide(StatusCode::FORBIDDEN, None, body).unwrap_err();
+        assert!(err.contains("user-top-read"), "scope lost: {err}");
+        assert!(err.contains("login again"), "no action: {err}");
+    }
+
+    #[test]
+    fn other_errors_keep_status_and_snippet() {
+        let err =
+            decide(StatusCode::BAD_GATEWAY, None, "<html>bad gateway</html>").unwrap_err();
+        assert!(err.contains("502"), "status lost: {err}");
+    }
+
+    #[test]
+    fn empty_success_stays_empty() {
+        assert_eq!(
+            decide(StatusCode::OK, None, "  ").unwrap(),
+            serde_json::json!({"empty": true})
+        );
+    }
+
+    #[test]
+    fn rate_limit_uses_header() {
+        assert_eq!(
+            decide(StatusCode::TOO_MANY_REQUESTS, Some("7"), "").unwrap_err(),
+            "rate-limited: retry after 7s"
+        );
+    }
 }
