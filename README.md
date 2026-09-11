@@ -50,6 +50,29 @@ npm run tauri build
 
 Windows NSIS installers require the [WiX toolset](https://wixtoolset.org) on the build machine.
 
+### Updates
+
+The app updates itself from GitHub releases. Settings shows the running
+version and a **Check for updates** button: when a newer signed release
+exists it downloads in the background and hands off to the installer
+(Windows exits into the installer, which relaunches the app). No login,
+layout, or keybind data is touched.
+
+To ship an update:
+
+1. Bump the version in all three places: `package.json`,
+   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`.
+2. Commit, then tag and push: `git tag v1.1.0; git push origin v1.1.0`.
+3. The `Publish` workflow builds, signs, and opens a **draft** release.
+   Review it, press Publish, and installed apps will offer the update.
+
+One-time setup: generate the signing key with
+`npx tauri signer generate -w ~/.tauri/snapify-update.key` (keep the
+password with the key file, never commit either), put the public key in
+`tauri.conf.json` under `plugins.updater.pubkey`, and store the private
+key plus password as the `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets.
+
 ## Configuration
 
 - `src-tauri/src/auth.rs` — `CLIENT_ID` and `REDIRECT_URI` constants. Replace the client ID with your own Spotify app's ID.

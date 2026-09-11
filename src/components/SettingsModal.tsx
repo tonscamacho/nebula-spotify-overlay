@@ -9,6 +9,7 @@ import {
   type KeybindAction,
   type KeybindMap,
 } from "../lib/keybinds";
+import type { UpdateStatus } from "../lib/updater";
 import { XIcon } from "./icons";
 
 interface Props {
@@ -25,6 +26,8 @@ interface Props {
   wordKaraoke: boolean;
   transLang: TransLang;
   keybinds: KeybindMap;
+  appVersion: string;
+  update: UpdateStatus;
   onPreset: (name: string) => void;
   onUiScale: (v: number) => void;
   onTheme: (v: "dark" | "light") => void;
@@ -38,6 +41,9 @@ interface Props {
   onResetLayout: () => void;
   onKeybind: (action: KeybindAction, accelerator: string) => Promise<void>;
   onResetKeybinds: () => void;
+  onCheckUpdate: () => void;
+  onDownloadUpdate: () => void;
+  onRestartUpdate: () => void;
   onLogout: () => void;
   onClose: () => void;
 }
@@ -117,6 +123,27 @@ function KeybindRow({
       {error && <div className="key-err">{error}</div>}
     </div>
   );
+}
+
+function updateHint(u: UpdateStatus): string {
+  switch (u.kind) {
+    case "idle":
+      return "Checks your GitHub releases for a newer signed build.";
+    case "checking":
+      return "Contacting the release feed…";
+    case "current":
+      return "You are on the latest version.";
+    case "available":
+      return `Version ${u.version} is ready to install.`;
+    case "downloading":
+      return u.progress >= 0
+        ? `Downloading… ${Math.round(u.progress * 100)}%.`
+        : "Downloading…";
+    case "ready":
+      return `Version ${u.version} installed. Restart to switch over.`;
+    case "error":
+      return u.message;
+  }
 }
 
 export default function SettingsModal(p: Props) {
@@ -287,6 +314,38 @@ export default function SettingsModal(p: Props) {
             />
           ))}
         </div>
+        <label className="row">
+          <span>App version</span>
+          <span className="dim">{p.appVersion || "…"}</span>
+        </label>
+        <label className="row">
+          <span>Software update</span>
+          {p.update.kind === "available" ? (
+            <button className="btn sm primary" onClick={p.onDownloadUpdate}>
+              Install {p.update.version}
+            </button>
+          ) : p.update.kind === "ready" ? (
+            <button className="btn sm primary" onClick={p.onRestartUpdate}>
+              Restart now
+            </button>
+          ) : (
+            <button
+              className="btn sm"
+              onClick={p.onCheckUpdate}
+              disabled={p.update.kind === "checking" || p.update.kind === "downloading"}
+            >
+              {p.update.kind === "checking"
+                ? "Checking…"
+                : p.update.kind === "downloading"
+                  ? "Downloading…"
+                  : "Check for updates"}
+            </button>
+          )}
+        </label>
+        <div className="hint">{updateHint(p.update)}</div>
+        {p.update.kind === "available" && p.update.body && (
+          <div className="hint">{p.update.body.slice(0, 400)}</div>
+        )}
       </div>
     </div>
   );

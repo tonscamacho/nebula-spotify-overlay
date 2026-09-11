@@ -27,6 +27,10 @@ import {
   type KeybindAction,
   type KeybindMap,
 } from "./lib/keybinds";
+import { updateError, type UpdateStatus } from "./lib/updater";
+import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   PRESETS,
   clampLayoutToArea,
@@ -143,6 +147,12 @@ export default function App() {
   const [autostart, setAutostart] = useState(false);
   const [keybinds, setKeybinds] = useState<KeybindMap>({ ...DEFAULT_KEYBINDS });
   const keybindsRef = useRef<KeybindMap>({ ...DEFAULT_KEYBINDS });
+  const [appVersion, setAppVersion] = useState("");
+  const [update, setUpdate] = useState<UpdateStatus>({ kind: "idle" });
+  const updateRef = useRef<Update | null>(null);
+  // Synchronous re-entry guard: state updates do not propagate before the
+  // next click, so rapid double-clicks would otherwise fire twice.
+  const updateBusyRef = useRef(false);
 
   const trackIdRef = useRef<string | null>(null);
   const snapRef = useRef<PlayerSnapshot>(EMPTY_SNAP);
@@ -279,6 +289,7 @@ export default function App() {
         setKeybinds(next);
       })
       .catch(() => {});
+    getVersion().then(setAppVersion).catch(() => {});
     void refreshAuth().then((ok) => {
       if (ok) {
         void fetchPlayer().then((alive) => {
@@ -527,6 +538,66 @@ export default function App() {
         // Keep previous state when the re-read also fails.
       }
     }
+  }, [flashErr]);
+
+  const checkUpdates = useCallback(async () => {
+    if (updateBusyRef.current) return;
+    updateBusyRef.current = true;
+    setUpdate({ kind: "checking" });
+    try {
+      const found = await check({ timeout: 20000 });
+      if (!found) {
+        updateRef.current = null;
+        setUpdate({ kind: "current" });
+        return;
+      }
+      updateRef.current = found;
+      setUpdate({ kind: "available", version: found.version, body: found.body ?? null });
+    } catch (e) {
+      updateRef.current = null;
+      setUpdate({ kind: "error", message: updateError(e) });
+    } finally {
+      updateBusyRef.current = false;
+    }
+  }, []);
+
+  const downloadUpdate = useCallback(async () => {
+    if (updateBusyRef.current) return;
+    const pending = updateRef.current;
+    if (!pending) return;
+    updateBusyRef.current = true;
+    const version = pending.version;
+    setUpdate({ kind: "downloading", version, progress: -1 });
+    try {
+      let received = 0;
+      let total = 0;
+      const onEvent = (event: DownloadEvent) => {
+        if (event.event === "Started") {
+          total = event.data.contentLength ?? 0;
+        } else if (event.event === "Progress") {
+          received += event.data.chunkLength;
+        }
+        setUpdate({
+          kind: "downloading",
+          version,
+          progress: total > 0 ? Math.min(1, received / total) : -1,
+        });
+      };
+      await pending.downloadAndInstall(onEvent, { timeout: 300000 });
+      updateRef.current = null;
+      setUpdate({ kind: "ready", version });
+    } catch (e) {
+      updateRef.current = null;
+      setUpdate({ kind: "error", message: updateError(e) });
+    } finally {
+      updateBusyRef.current = false;
+    }
+  }, []);
+
+  const restartUpdate = useCallback(() => {
+    void relaunch().catch((e) => {
+      flashErr(e instanceof Error ? e.message : String(e));
+    });
   }, [flashErr]);
 
   // Tray menu + global shortcuts arrive as events from Rust.
@@ -974,6 +1045,11 @@ export default function App() {
         keybinds={keybinds}
         onKeybind={changeKeybind}
         onResetKeybinds={() => void resetKeybinds()}
+        appVersion={appVersion}
+        update={update}
+        onCheckUpdate={() => void checkUpdates()}
+        onDownloadUpdate={() => void downloadUpdate()}
+        onRestartUpdate={restartUpdate}
         onLogout={() => void logout()}
         onClose={() => setSettingsOpen(false)}
       />
