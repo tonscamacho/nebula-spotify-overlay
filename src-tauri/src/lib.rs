@@ -1,16 +1,18 @@
 mod auth;
+mod keybinds;
 mod lyrics;
 mod spotify;
 mod system;
+
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
-use tauri_plugin_global_shortcut::{
-    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 fn toggle_interactive(app: &tauri::AppHandle) {
     // Never hide the window here. Hiding/showing a maximized always-on-top
@@ -26,13 +28,28 @@ fn toggle_interactive(app: &tauri::AppHandle) {
     let _ = app.emit("overlay-toggle-active", ());
 }
 
+fn toggle_visibility(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let visible = win.is_visible().unwrap_or(true);
+        if visible {
+            let _ = win.hide();
+        } else {
+            let _ = win.show();
+            // Deliberately no set_focus: showing must not steal the game.
+        }
+        let _ = app.emit("overlay-visibility-changed", !visible);
+    }
+}
+
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let visibility =
+        MenuItem::with_id(app, "toggle-visibility", "Show / Hide window", true, None::<&str>)?;
     let show_hide = MenuItem::with_id(app, "show-hide", "Interact / Pass through", true, None::<&str>)?;
     let edit = MenuItem::with_id(app, "toggle-edit", "Toggle edit lock", true, None::<&str>)?;
     let preset = MenuItem::with_id(app, "cycle-preset", "Cycle preset", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "open-settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show_hide, &edit, &preset, &settings, &quit])?;
+    let menu = Menu::with_items(app, &[&visibility, &show_hide, &edit, &preset, &settings, &quit])?;
 
     let icon = match app.default_window_icon().cloned() {
         Some(i) => i,
@@ -48,6 +65,7 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
+            "toggle-visibility" => toggle_visibility(app),
             "show-hide" => toggle_interactive(app),
             "toggle-edit" => {
                 let _ = app.emit("tray-toggle-edit", ());
@@ -79,18 +97,16 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn register_shortcuts(app: &tauri::AppHandle) {
-    let defs = [
-        (Modifiers::CONTROL | Modifiers::ALT, Code::KeyP, "shortcut-playpause"),
-        (Modifiers::CONTROL | Modifiers::ALT, Code::KeyN, "shortcut-next"),
-        (Modifiers::SHIFT, Code::Tab, "shortcut-visibility"),
-        (Modifiers::CONTROL | Modifiers::ALT, Code::KeyE, "shortcut-edit"),
-    ];
-    for (mods, code, event) in defs {
-        let shortcut = Shortcut::new(Some(mods), code);
+fn register_shortcuts(app: &tauri::AppHandle, map: &HashMap<String, String>) {
+    for action in keybinds::GLOBAL_ACTIONS {
+        let Some(acc) = map.get(*action) else { continue };
+        let Ok(shortcut) = acc.parse::<tauri_plugin_global_shortcut::Shortcut>() else {
+            eprintln!("global shortcut {action} skipped: cannot parse \"{acc}\"");
+            continue;
+        };
         match app.global_shortcut().register(shortcut) {
             Ok(()) => {}
-            Err(e) => eprintln!("global shortcut {event} not registered: {e}"),
+            Err(e) => eprintln!("global shortcut {action} (\"{acc}\") not registered: {e}"),
         }
     }
 }
@@ -110,19 +126,29 @@ pub fn run() {
                     if event.state() != ShortcutState::Pressed {
                         return;
                     }
-                    let playpause =
-                        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyP);
-                    let next = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyN);
-                    let vis = Shortcut::new(Some(Modifiers::SHIFT), Code::Tab);
-                    let edit = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyE);
-                    if shortcut == &playpause {
-                        let _ = app.emit("shortcut-playpause", ());
-                    } else if shortcut == &next {
-                        let _ = app.emit("shortcut-next", ());
-                    } else if shortcut == &vis {
-                        toggle_interactive(app);
-                    } else if shortcut == &edit {
-                        let _ = app.emit("shortcut-edit", ());
+                    let action = app
+                        .try_state::<keybinds::KeybindStore>()
+                        .and_then(|store| {
+                            let map = store.0.lock().unwrap().clone();
+                            keybinds::action_for_shortcut(&map, shortcut)
+                        });
+                    match action.as_deref() {
+                        Some(s) if s == keybinds::ACTION_PLAYPAUSE => {
+                            let _ = app.emit("shortcut-playpause", ());
+                        }
+                        Some(s) if s == keybinds::ACTION_NEXT => {
+                            let _ = app.emit("shortcut-next", ());
+                        }
+                        Some(s) if s == keybinds::ACTION_INTERACT => {
+                            toggle_interactive(app);
+                        }
+                        Some(s) if s == keybinds::ACTION_EDIT => {
+                            let _ = app.emit("shortcut-edit", ());
+                        }
+                        Some(s) if s == keybinds::ACTION_VISIBILITY => {
+                            toggle_visibility(app);
+                        }
+                        _ => {}
                     }
                 })
                 .build(),
@@ -135,10 +161,12 @@ pub fn run() {
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.set_ignore_cursor_events(true);
             }
+            let map = keybinds::load_map(&app.handle());
+            app.manage(keybinds::KeybindStore(Mutex::new(map.clone())));
             if let Err(e) = build_tray(&app.handle()) {
                 eprintln!("tray init failed: {e}");
             }
-            register_shortcuts(&app.handle());
+            register_shortcuts(&app.handle(), &map);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -179,6 +207,9 @@ pub fn run() {
             lyrics::get_lyrics,
             system::autostart_state,
             system::set_autostart,
+            keybinds::get_keybinds,
+            keybinds::set_keybind,
+            keybinds::reset_keybinds,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

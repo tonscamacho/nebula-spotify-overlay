@@ -1,5 +1,14 @@
+import { useEffect, useRef, useState } from "react";
 import { TRANS_LANGS, type TransLang } from "../lib/translate";
 import type { Density } from "../lib/types";
+import {
+  KEYBIND_LABELS,
+  KEYBIND_ORDER,
+  KEYBIND_SCOPES,
+  eventToAccelerator,
+  type KeybindAction,
+  type KeybindMap,
+} from "../lib/keybinds";
 import { XIcon } from "./icons";
 
 interface Props {
@@ -15,6 +24,7 @@ interface Props {
   clickToSeek: boolean;
   wordKaraoke: boolean;
   transLang: TransLang;
+  keybinds: KeybindMap;
   onPreset: (name: string) => void;
   onUiScale: (v: number) => void;
   onTheme: (v: "dark" | "light") => void;
@@ -26,8 +36,87 @@ interface Props {
   onWordKaraoke: (v: boolean) => void;
   onTransLang: (v: TransLang) => void;
   onResetLayout: () => void;
+  onKeybind: (action: KeybindAction, accelerator: string) => Promise<void>;
+  onResetKeybinds: () => void;
   onLogout: () => void;
   onClose: () => void;
+}
+
+function KeybindRow({
+  action,
+  current,
+  onKeybind,
+}: {
+  action: KeybindAction;
+  current: string;
+  onKeybind: (action: KeybindAction, accelerator: string) => Promise<void>;
+}) {
+  const [capturing, setCapturing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (capturing) btnRef.current?.focus();
+  }, [capturing]);
+
+  const cancel = () => {
+    setCapturing(false);
+    setError(null);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+      cancel();
+      return;
+    }
+    const parsed = eventToAccelerator(e.nativeEvent);
+    if (parsed === null) return;
+    if (typeof parsed !== "string") {
+      setError(parsed.error);
+      return;
+    }
+    if (parsed === current) {
+      cancel();
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    void onKeybind(action, parsed)
+      .then(() => {
+        setCapturing(false);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        setSaving(false);
+      });
+  };
+
+  return (
+    <div>
+      <span>
+        {KEYBIND_LABELS[action]}
+        <span className="scope">{KEYBIND_SCOPES[action] === "global" ? "global" : "focused"}</span>
+      </span>
+      <button
+        ref={btnRef}
+        className={`kbd kbd-btn${capturing ? " kbd-live" : ""}`}
+        onClick={() => (capturing ? cancel() : (setError(null), setCapturing(true)))}
+        onKeyDown={capturing ? onKeyDown : undefined}
+        onBlur={capturing ? cancel : undefined}
+        disabled={saving}
+        title={capturing ? "Press the new shortcut, Esc to cancel" : "Click to remap"}
+        aria-label={`Remap ${KEYBIND_LABELS[action]}`}
+      >
+        {saving ? "Saving…" : capturing ? "Press keys…" : current}
+      </button>
+      {error && <div className="key-err">{error}</div>}
+    </div>
+  );
 }
 
 export default function SettingsModal(p: Props) {
@@ -127,9 +216,9 @@ export default function SettingsModal(p: Props) {
         </label>
         <div className="hint">
           Pass-through keeps the overlay visible on top while all mouse input
-          goes to the game or window below. Press Shift+Tab, Ctrl+Alt+E, or
-          use the tray to interact again. Mouse alone cannot re-enter while
-          passing through.
+          goes to the game or window below. Press {p.keybinds.toggleInteract},{" "}
+          {p.keybinds.toggleEdit}, or use the tray to interact again. Mouse
+          alone cannot re-enter while passing through.
         </div>
         <label className="row">
           <span>Click lyric to seek</span>
@@ -175,35 +264,28 @@ export default function SettingsModal(p: Props) {
         </label>
         <div className="hint">
           Each pane has its own opacity slider in its header while interactive
-          (Shift+Tab, Ctrl+Alt+E, or the tray). Double-click empty canvas or
-          Esc returns to pass-through.
+          ({p.keybinds.toggleInteract}, {p.keybinds.toggleEdit}, or the tray).
+          Double-click empty canvas or Esc returns to pass-through.
         </div>
-        <div className="hint">Shortcuts work everywhere, even over a game:</div>
+        <label className="row">
+          <span>Shortcuts</span>
+          <button className="btn sm" onClick={p.onResetKeybinds}>
+            Reset
+          </button>
+        </label>
+        <div className="hint">
+          Global shortcuts work everywhere, even over a game. Focused ones need
+          the overlay focused. Click a binding, press the new keys, Esc cancels.
+        </div>
         <div className="keys">
-          <div>
-            <span>Play / Pause</span>
-            <span className="kbd">Ctrl+Alt+P</span>
-          </div>
-          <div>
-            <span>Next track</span>
-            <span className="kbd">Ctrl+Alt+N</span>
-          </div>
-          <div>
-            <span>Interact / Pass through</span>
-            <span className="kbd">Shift+Tab</span>
-          </div>
-          <div>
-            <span>Edit lock</span>
-            <span className="kbd">Ctrl+Alt+E</span>
-          </div>
-          <div>
-            <span>Cycle preset (window focused)</span>
-            <span className="kbd">Ctrl+Alt+L</span>
-          </div>
-          <div>
-            <span>Interact toggle, legacy (window focused)</span>
-            <span className="kbd">Ctrl+Alt+C</span>
-          </div>
+          {KEYBIND_ORDER.map((action) => (
+            <KeybindRow
+              key={action}
+              action={action}
+              current={p.keybinds[action]}
+              onKeybind={p.onKeybind}
+            />
+          ))}
         </div>
       </div>
     </div>

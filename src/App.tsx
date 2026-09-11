@@ -21,6 +21,13 @@ import { api, parsePlayer } from "./lib/spotify";
 import { initialBrowse } from "./lib/browse";
 import type { TransLang } from "./lib/translate";
 import {
+  DEFAULT_KEYBINDS,
+  acceleratorMatchesEvent,
+  coerceKeybinds,
+  type KeybindAction,
+  type KeybindMap,
+} from "./lib/keybinds";
+import {
   PRESETS,
   clampLayoutToArea,
   defaultLayoutFor,
@@ -134,6 +141,8 @@ export default function App() {
     }
   });
   const [autostart, setAutostart] = useState(false);
+  const [keybinds, setKeybinds] = useState<KeybindMap>({ ...DEFAULT_KEYBINDS });
+  const keybindsRef = useRef<KeybindMap>({ ...DEFAULT_KEYBINDS });
 
   const trackIdRef = useRef<string | null>(null);
   const snapRef = useRef<PlayerSnapshot>(EMPTY_SNAP);
@@ -142,6 +151,9 @@ export default function App() {
   useEffect(() => {
     snapRef.current = snap;
   }, [snap]);
+  useEffect(() => {
+    keybindsRef.current = keybinds;
+  }, [keybinds]);
   useEffect(() => {
     uiScaleRef.current = uiScale;
   }, [uiScale]);
@@ -260,6 +272,13 @@ export default function App() {
       persist(fresh.panes, fresh.preset);
     }
     invoke<boolean>("autostart_state").then(setAutostart).catch(() => {});
+    invoke<unknown>("get_keybinds")
+      .then((raw) => {
+        const next = coerceKeybinds(raw);
+        keybindsRef.current = next;
+        setKeybinds(next);
+      })
+      .catch(() => {});
     void refreshAuth().then((ok) => {
       if (ok) {
         void fetchPlayer().then((alive) => {
@@ -331,30 +350,37 @@ export default function App() {
 
   // Passive display mode stays visible on top but passes every mouse event
   // to the game or window below. Interactive mode takes input for presses,
-  // drags, and settings. The window is never hidden on toggle, which is
-  // what flashed exclusive-fullscreen games.
+  // drags, and settings. Visibility (true hide/show) is a separate global
+  // action that hides the window entirely.
   useEffect(() => {
     const shouldIgnore = loggedIn && !interactive && !settingsOpen;
     void getCurrentWindow().setIgnoreCursorEvents(shouldIgnore).catch(() => {});
   }, [loggedIn, interactive, settingsOpen]);
 
-  // In-app shortcuts. Shift+Tab, Ctrl+Alt+E/P/N arrive as Tauri events
-  // from the global shortcuts even while focused, so they are handled only
-  // there to avoid double-firing. This listener keeps Esc, the focused-only
-  // preset cycle, and the legacy click-through key.
+  // In-app shortcuts. Global chords (play/pause, next, interact, edit,
+  // visibility) arrive as Tauri events even while focused, so they are
+  // handled only there to avoid double-firing. This listener keeps Esc plus
+  // the focused-only chords, matched against the stored keybinds so remaps
+  // keep working.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && interactive) {
-        setInteractive(false);
+      // Bare Esc always exits edit mode so a remapped legacy chord from a
+      // hand-edited file can never trap the user.
+      if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (interactive) setInteractive(false);
         return;
       }
-      if (!(e.ctrlKey && e.altKey)) return;
-      const k = e.key.toLowerCase();
-      if (k === "l") {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) {
+        return;
+      }
+      const kb = keybindsRef.current;
+      if (acceleratorMatchesEvent(kb.cyclePreset, e)) {
         e.preventDefault();
         cyclePreset();
-      } else if (k === "c") {
-        // Legacy binding: click-through toggle is now the interact toggle.
+        return;
+      }
+      if (acceleratorMatchesEvent(kb.legacyInteract, e)) {
         e.preventDefault();
         setInteractive((v) => !v);
       }
@@ -465,6 +491,43 @@ export default function App() {
     },
     [persist],
   );
+
+  const changeKeybind = useCallback(
+    async (action: KeybindAction, accelerator: string) => {
+      try {
+        const next = await invoke<Record<KeybindAction, string>>("set_keybind", {
+          action,
+          accelerator,
+        });
+        const coerced = coerceKeybinds(next);
+        keybindsRef.current = coerced;
+        setKeybinds(coerced);
+      } catch (e) {
+        flashErr(e instanceof Error ? e.message : String(e));
+        throw e;
+      }
+    },
+    [flashErr],
+  );
+
+  const resetKeybinds = useCallback(async () => {
+    try {
+      const next = await invoke<Record<KeybindAction, string>>("reset_keybinds");
+      const coerced = coerceKeybinds(next);
+      keybindsRef.current = coerced;
+      setKeybinds(coerced);
+    } catch (e) {
+      flashErr(e instanceof Error ? e.message : String(e));
+      try {
+        const actual = await invoke<unknown>("get_keybinds");
+        const coerced = coerceKeybinds(actual);
+        keybindsRef.current = coerced;
+        setKeybinds(coerced);
+      } catch {
+        // Keep previous state when the re-read also fails.
+      }
+    }
+  }, [flashErr]);
 
   // Tray menu + global shortcuts arrive as events from Rust.
   useEffect(() => {
@@ -742,6 +805,9 @@ export default function App() {
             onPointerMove={onStageMove}
             onPointerUp={onStageUp}
             onDoubleClick={(e) => {
+              // Reachable only while interactive: passive mode passes all
+              // mouse events to the game below, so re-entry is via the
+              // interact shortcut, edit shortcut, or the tray.
               if (e.target === e.currentTarget) {
                 setInteractive(false);
               }
@@ -771,7 +837,7 @@ export default function App() {
           <button
             className="tbtn"
             onClick={cyclePreset}
-            title="Cycle preset (Ctrl+Alt+L)"
+            title={`Cycle preset (${keybinds.cyclePreset})`}
             aria-label="Cycle preset"
           >
             <ListIcon size={15} />
@@ -802,7 +868,7 @@ export default function App() {
           <button
             className="tbtn"
             onClick={() => setInteractive(false)}
-            title="Pass through (Shift+Tab)"
+            title={`Pass through (${keybinds.toggleInteract})`}
             aria-label="Pass through to game"
           >
             <UnlockIcon size={15} />
@@ -890,6 +956,9 @@ export default function App() {
           setPreset(fresh.preset);
           persist(fresh.panes, fresh.preset);
         }}
+        keybinds={keybinds}
+        onKeybind={changeKeybind}
+        onResetKeybinds={() => void resetKeybinds()}
         onLogout={() => void logout()}
         onClose={() => setSettingsOpen(false)}
       />

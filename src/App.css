@@ -964,6 +964,48 @@ select:focus-visible,
   white-space: nowrap;
 }
 
+.kbd-btn {
+  cursor: pointer;
+  font: inherit;
+  min-width: 110px;
+  text-align: center;
+}
+
+.kbd-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.kbd-live {
+  border-color: var(--signal);
+  color: var(--signal);
+  animation: skel 1.2s infinite linear;
+}
+
+.keys > div {
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.keys .scope {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  border: 1px solid var(--stroke);
+  border-radius: 99px;
+  padding: 1px 7px;
+  margin-left: 8px;
+  vertical-align: 1px;
+}
+
+.key-err {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #ff8a80;
+  padding: 0 2px 4px;
+}
+
 .seg {
   display: flex;
   border: 1px solid var(--stroke);
