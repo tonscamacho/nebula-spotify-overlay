@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "../lib/spotify";
 import {
   parseArtistDetail,
   parseAlbumDetail,
+  parseAudiobookDetail,
+  parseChapterDetail,
+  parseEpisodeDetail,
   parseFollowedArtists,
   parsePlaylistDetail,
   parsePlaylistPage,
   parseSavedAlbums,
+  parseSavedAudiobooks,
+  parseSavedEpisodes,
+  parseSavedShows,
   parseSavedTracks,
   parseSearch,
+  parseShowDetail,
+  parseTrackDetail,
   parseUserProfile,
   toLibraryItem,
 } from "../lib/browse";
@@ -23,9 +32,10 @@ import type {
   UserProfile,
 } from "../lib/types";
 import { formatMs } from "../lib/lrc";
-import { RefreshIcon } from "./icons";
+import { LikePlusIcon, OpenIcon, PlayIcon, RefreshIcon } from "./icons";
+import SpotifyMark from "./SpotifyMark";
 
-type LibTab = "playlists" | "albums" | "tracks" | "artists";
+type LibTab = "playlists" | "albums" | "tracks" | "artists" | "shows" | "episodes" | "audiobooks";
 
 interface Props {
   state: BrowseState;
@@ -54,6 +64,7 @@ function Row({
   sub,
   image,
   right,
+  spotifyUrl,
   onOpen,
   onPlay,
   onQueue,
@@ -62,28 +73,45 @@ function Row({
   sub: string;
   image: string | null;
   right?: string;
+  spotifyUrl?: string;
   onOpen: () => void;
   onPlay?: () => void;
   onQueue?: () => void;
 }) {
+  // Shelves are full-row Spotify-only, max 20 items, Spotify mark per row,
+  // no mixed-service rows, link at row end into the Spotify app.
+  const fullTitle = title.length > 25 ? title : title;
   return (
     <li className="q browse-row">
-      <button className="browse-thumb" onClick={onOpen} aria-label={`Open ${title}`} title={title}>
+      <button className="browse-thumb" onClick={onOpen} aria-label={`Open ${title}`} title={fullTitle}>
         {image ? <img src={image} alt="" loading="lazy" /> : <span className="cover-fallback" aria-hidden="true" />}
       </button>
-      <button className="q-name browse-name" onClick={onOpen} title={title}>
+      <button className="q-name browse-name" onClick={onOpen} title={fullTitle}>
         {title}
         {sub && <small>{sub}</small>}
       </button>
+      <span className="row-mark" aria-hidden="true">
+        <SpotifyMark variant="icon" size={16} />
+      </span>
       {right && <span className="q-time">{right}</span>}
       {onPlay && (
         <button className="icon-btn sm row-act" onClick={onPlay} title={`Play ${title}`} aria-label={`Play ${title}`}>
-          ▶
+          <PlayIcon size={13} />
         </button>
       )}
       {onQueue && (
         <button className="icon-btn sm row-act" onClick={onQueue} title={`Queue ${title}`} aria-label={`Queue ${title}`}>
-          +
+          <LikePlusIcon size={13} />
+        </button>
+      )}
+      {spotifyUrl && (
+        <button
+          className="icon-btn sm row-act"
+          onClick={() => void openUrl(spotifyUrl)}
+          title="OPEN SPOTIFY"
+          aria-label={`Open ${title} in Spotify`}
+        >
+          <OpenIcon size={13} />
         </button>
       )}
     </li>
@@ -106,7 +134,7 @@ function TrackRow({
       {typeof index === "number" && (
         <span className="q-index">{String(index + 1).padStart(2, "0")}</span>
       )}
-      <span className="q-name">
+      <span className="q-name" title={`${t.name} — ${t.artists}`}>
         {t.name}
         <small>{t.artists}</small>
       </span>
@@ -118,7 +146,7 @@ function TrackRow({
           aria-label={`Play ${t.name}`}
           onClick={onPlay}
         >
-          ▶
+          <PlayIcon size={13} />
         </button>
       )}
       {onQueue && (
@@ -128,7 +156,7 @@ function TrackRow({
           aria-label={`Queue ${t.name}`}
           onClick={() => onQueue()}
         >
-          +
+          <LikePlusIcon size={13} />
         </button>
       )}
     </li>
@@ -180,28 +208,48 @@ function LibraryList({
   const err = useCallback((m: string) => onError(scopeHint(m) ?? m), [onError]);
   const list = usePagedList<LibraryItem | QueueItem, number | string>(
     async (limit, cursor) => {
+      // Shelves cap at 20 items per PLAN-master.md quota policy.
+      const capped = Math.min(limit, 20);
       if (tab === "playlists") {
         const off = typeof cursor === "number" ? cursor : 0;
-        const parsed = parsePlaylistPage(await api.myPlaylists(limit, off));
+        const parsed = parsePlaylistPage(await api.myPlaylists(capped, off));
         const next = off + parsed.items.length < parsed.total ? off + parsed.items.length : null;
-        return { items: parsed.items, next };
+        return { items: parsed.items.slice(0, 20), next };
       }
       if (tab === "albums") {
         const off = typeof cursor === "number" ? cursor : 0;
-        const parsed = parseSavedAlbums(await api.savedAlbums(limit, off));
+        const parsed = parseSavedAlbums(await api.savedAlbums(capped, off));
         const next = off + parsed.items.length < parsed.total ? off + parsed.items.length : null;
-        return { items: parsed.items, next };
+        return { items: parsed.items.slice(0, 20), next };
       }
       if (tab === "tracks") {
         const off = typeof cursor === "number" ? cursor : 0;
-        const parsed = parseSavedTracks(await api.savedTracks(limit, off));
+        const parsed = parseSavedTracks(await api.savedTracks(capped, off));
         const next = off + parsed.items.length < parsed.total ? off + parsed.items.length : null;
-        return { items: parsed.items, next };
+        return { items: parsed.items.slice(0, 20), next };
+      }
+      if (tab === "shows") {
+        const off = typeof cursor === "number" ? cursor : 0;
+        const parsed = parseSavedShows(await api.savedShows(capped, off));
+        const next = off + parsed.items.length < parsed.total ? off + parsed.items.length : null;
+        return { items: parsed.items.slice(0, 20), next };
+      }
+      if (tab === "episodes") {
+        const off = typeof cursor === "number" ? cursor : 0;
+        const parsed = parseSavedEpisodes(await api.savedEpisodes(capped, off));
+        const next = off + parsed.items.length < parsed.total ? off + parsed.items.length : null;
+        return { items: parsed.items.slice(0, 20), next };
+      }
+      if (tab === "audiobooks") {
+        const off = typeof cursor === "number" ? cursor : 0;
+        const parsed = parseSavedAudiobooks(await api.savedAudiobooks(capped, off));
+        const next = off + parsed.items.length < parsed.total ? off + parsed.items.length : null;
+        return { items: parsed.items.slice(0, 20), next };
       }
       const parsed = parseFollowedArtists(
-        await api.followedArtists(limit, typeof cursor === "string" ? cursor : null),
+        await api.followedArtists(capped, typeof cursor === "string" ? cursor : null),
       );
-      return { items: parsed.items, next: parsed.after };
+      return { items: parsed.items.slice(0, 20), next: parsed.after };
     },
     { pageSize: 20, resetKey: `${resetKey}:lib:${tab}`, onError: err },
   );
@@ -243,6 +291,9 @@ function LibraryList({
               if (!li.id) return;
               if (tab === "playlists") onOpen({ kind: "playlist", id: li.id, name: li.name });
               else if (tab === "albums") onOpen({ kind: "album", id: li.id, name: li.name });
+              else if (tab === "shows") onOpen({ kind: "show", id: li.id, name: li.name });
+              else if (tab === "audiobooks") onOpen({ kind: "audiobook", id: li.id, name: li.name });
+              else if (tab === "episodes") onOpen({ kind: "episode", id: li.id, name: li.name });
               else onOpen({ kind: "artist", id: li.id, name: li.name });
             }}
             onPlay={(it as LibraryItem).uri ? () => onPlayContext((it as LibraryItem).uri) : undefined}
@@ -297,7 +348,6 @@ function PlaylistTracks({
 
 export default function BrowsePane(p: Props) {
   const [libTab, setLibTab] = useState<LibTab>("playlists");
-  const [userPls, setUserPls] = useState<LibraryItem[]>([]);
   const [detail, setDetail] = useState<DetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [results, setResults] = useState<SearchResults | null>(null);
@@ -319,30 +369,78 @@ export default function BrowsePane(p: Props) {
       const stale = () => id !== detailGen.current;
       setDetailLoading(true);
       setDetail(null);
-      setUserPls([]);
       try {
         if (entry.kind === "playlist") {
           const d = parsePlaylistDetail(await api.playlist(entry.id));
           if (stale()) return;
           setDetail(d);
         } else if (entry.kind === "album") {
-          const d = parseAlbumDetail(await api.album(entry.id));
+          const [a, tr] = await Promise.all([
+            api.album(entry.id),
+            api.albumTracks(entry.id, 20, 0),
+          ]);
           if (stale()) return;
-          setDetail(d);
-        } else if (entry.kind === "artist") {
-          const [a, t] = await Promise.all([api.artist(entry.id), api.artistTop(entry.id)]);
-          if (stale()) return;
-          setDetail(parseArtistDetail(a, t, null));
-        } else {
-          const u = await api.user(entry.id);
-          if (stale()) return;
-          const prof = parseUserProfile(u);
-          if (prof) {
-            const pls = await api.userPlaylists(entry.id, 10, 0);
-            if (stale()) return;
-            setUserPls(parsePlaylistPage(pls).items);
+          const base = parseAlbumDetail(a);
+          // Merge paged tracks strip for the detail view.
+          if (base && base.kind === "album") {
+            const paged = tr as Record<string, unknown>;
+            const items = Array.isArray(paged["items"])
+              ? (paged["items"] as Array<Record<string, unknown>>)
+              : [];
+            if (items.length > 0 && base.tracks.length === 0) {
+              setDetail({
+                ...base,
+                tracks: items
+                  .filter((t) => typeof t["uri"] === "string")
+                  .map((t) => ({
+                    name: typeof t["name"] === "string" ? (t["name"] as string) : "Unknown",
+                    artists: base.artists,
+                    durationMs: typeof t["duration_ms"] === "number" ? (t["duration_ms"] as number) : 0,
+                    uri: t["uri"] as string,
+                  })),
+              });
+            } else {
+              setDetail(base);
+            }
+          } else {
+            setDetail(base);
           }
-          setDetail(null);
+        } else if (entry.kind === "artist") {
+          // Dropped GET /artists/{id}/top-tracks. Replaced with albums
+          // strip + related artists; search is the fallback strip.
+          const [a, al, rel] = await Promise.all([
+            api.artist(entry.id),
+            api.artistAlbums(entry.id, 10, 0),
+            api.relatedArtists(entry.id).catch(() => null),
+          ]);
+          if (stale()) return;
+          setDetail(parseArtistDetail(a, al, rel));
+        } else if (entry.kind === "show") {
+          const [s, ep] = await Promise.all([
+            api.show(entry.id),
+            api.showEpisodes(entry.id, 20, 0),
+          ]);
+          if (stale()) return;
+          setDetail(parseShowDetail(s, ep));
+        } else if (entry.kind === "episode") {
+          const e = await api.episode(entry.id);
+          if (stale()) return;
+          setDetail(parseEpisodeDetail(e));
+        } else if (entry.kind === "audiobook") {
+          const [b, ch] = await Promise.all([
+            api.audiobook(entry.id),
+            api.audiobookChapters(entry.id, 20, 0).catch(() => null),
+          ]);
+          if (stale()) return;
+          setDetail(parseAudiobookDetail(b, ch));
+        } else if (entry.kind === "chapter") {
+          const c = await api.chapter(entry.id);
+          if (stale()) return;
+          setDetail(parseChapterDetail(c));
+        } else {
+          const t = await api.track(entry.id);
+          if (stale()) return;
+          setDetail(parseTrackDetail(t));
         }
       } catch (e) {
         if (stale()) return;
@@ -371,7 +469,8 @@ export default function BrowsePane(p: Props) {
     const id = ++searchGen.current;
     setSearching(true);
     try {
-      const res = parseSearch(await api.searchRaw(query, 5));
+      // Search capped: limit max 10, paginate by offset.
+      const res = parseSearch(await api.searchRaw(query, 10, 0));
       if (id !== searchGen.current) return;
       setResults(res);
     } catch (e) {
@@ -464,7 +563,7 @@ export default function BrowsePane(p: Props) {
   };
 
   if (top) {
-    const label = top.kind === "profile" ? top.name ?? top.id : top.name ?? top.id;
+    const label = top.name ?? top.id;
     return (
       <>
         <div className="pane-subhead">
@@ -472,6 +571,7 @@ export default function BrowsePane(p: Props) {
             ←
           </button>
           <span title={label}>{label}</span>
+          <SpotifyMark variant="full" size={18} />
         </div>
         {detailLoading ? (
           <>
@@ -486,8 +586,13 @@ export default function BrowsePane(p: Props) {
                 <div className="detail-title">{detail.name}</div>
                 <div className="dim">
                   {detail.kind === "playlist" && detail.owner}
-                  {detail.kind === "album" && detail.artists}
+                  {detail.kind === "album" && `${detail.artists}${detail.explicit ? " · Explicit" : ""}`}
                   {detail.kind === "artist" && detail.genres.join(" · ")}
+                  {detail.kind === "show" && `${detail.publisher}${detail.explicit ? " · Explicit" : ""}`}
+                  {detail.kind === "episode" && `${detail.show}${detail.explicit ? " · Explicit" : ""}`}
+                  {detail.kind === "audiobook" && `${detail.authors}${detail.explicit ? " · Explicit" : ""}`}
+                  {detail.kind === "chapter" && `${detail.book}${detail.explicit ? " · Explicit" : ""}`}
+                  {detail.kind === "track" && `${detail.artists} · ${detail.album}${detail.explicit ? " · Explicit" : ""}`}
                 </div>
                 <button className="btn sm primary" onClick={() => p.onPlayContext(detail.uri)}>
                   Play
@@ -502,9 +607,86 @@ export default function BrowsePane(p: Props) {
                 onQueueAdd={p.onQueueAdd}
                 onError={p.onError}
               />
+            ) : detail.kind === "artist" ? (
+              <>
+                {detail.topTracks.length > 0 && (
+                  <ol className="queue">
+                    {detail.topTracks.slice(0, 20).map((t, i) => (
+                      <TrackRow
+                        key={`${t.uri}-${i}`}
+                        t={t}
+                        index={i}
+                        onPlay={() => p.onPlayUris([t.uri])}
+                        onQueue={() => p.onQueueAdd(t.uri)}
+                      />
+                    ))}
+                  </ol>
+                )}
+                {detail.albums.length > 0 && (
+                  <>
+                    <div className="pane-subhead">Albums</div>
+                    <ol className="queue">
+                      {detail.albums.slice(0, 20).map((it) => (
+                        <Row
+                          key={`a-al-${it.id}`}
+                          title={it.name}
+                          sub={it.subtitle || "Album"}
+                          image={it.image}
+                          onOpen={() => open({ kind: "album", id: it.id, name: it.name })}
+                          onPlay={() => p.onPlayContext(it.uri)}
+                        />
+                      ))}
+                    </ol>
+                  </>
+                )}
+                {detail.topTracks.length === 0 && detail.albums.length === 0 && (
+                  <div className="empty">
+                    <div className="empty-title">No top tracks</div>
+                    <div className="empty-sub">Search this artist for songs and albums.</div>
+                    <button className="btn sm" onClick={back}>Back</button>
+                  </div>
+                )}
+              </>
+            ) : detail.kind === "show" ? (
+              <ol className="queue">
+                {detail.episodes.slice(0, 20).map((t, i) => (
+                  <TrackRow
+                    key={`${t.uri}-${i}`}
+                    t={t}
+                    index={i}
+                    onPlay={() => p.onPlayUris([t.uri])}
+                    onQueue={() => p.onQueueAdd(t.uri)}
+                  />
+                ))}
+              </ol>
+            ) : detail.kind === "audiobook" ? (
+              <ol className="queue">
+                {detail.chapters.slice(0, 20).map((t, i) => (
+                  <TrackRow
+                    key={`${t.uri}-${i}`}
+                    t={t}
+                    index={i}
+                    onPlay={() => p.onPlayUris([t.uri])}
+                    onQueue={() => p.onQueueAdd(t.uri)}
+                  />
+                ))}
+              </ol>
+            ) : detail.kind === "episode" || detail.kind === "chapter" || detail.kind === "track" ? (
+              <ol className="queue">
+                <TrackRow
+                  t={{
+                    name: detail.name,
+                    artists: detail.kind === "episode" ? detail.show : detail.kind === "chapter" ? detail.book : detail.artists,
+                    durationMs: detail.durationMs,
+                    uri: detail.uri,
+                  }}
+                  onPlay={() => p.onPlayUris([detail.uri])}
+                  onQueue={() => p.onQueueAdd(detail.uri)}
+                />
+              </ol>
             ) : (
               <ol className="queue">
-                {(detail.kind === "artist" ? detail.topTracks : detail.tracks).map((t, i) => (
+                {detail.tracks.slice(0, 20).map((t, i) => (
                   <TrackRow
                     key={`${t.uri}-${i}`}
                     t={t}
@@ -516,45 +698,43 @@ export default function BrowsePane(p: Props) {
               </ol>
             )}
           </>
-        ) : top.kind === "profile" ? (
-          <>
-            <div className="empty">
-              <div className="empty-title">{top.name ?? "User"}</div>
-              <div className="empty-sub">Public playlists below.</div>
-            </div>
-            <ol className="queue">
-              {userPls.map((it) => (
-                <Row
-                  key={it.id}
-                  title={it.name}
-                  sub={it.subtitle}
-                  image={it.image}
-                  onOpen={() => open({ kind: "playlist", id: it.id, name: it.name })}
-                  onPlay={() => p.onPlayContext(it.uri)}
-                />
-              ))}
-            </ol>
-          </>
         ) : (
           <div className="empty">
             <div className="empty-title">Nothing here</div>
             <div className="empty-sub">Spotify returned no detail for this item.</div>
+            <button className="btn sm" onClick={back}>Back</button>
           </div>
         )}
       </>
     );
   }
 
+  const views = ["library", "search", "profile"] as const;
+  const onTabKey = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const dir = e.key === "ArrowRight" ? 1 : -1;
+    const next = views[(idx + dir + views.length) % views.length];
+    p.onChange({ ...p.state, view: next, stack: [] });
+    const tabs = (e.currentTarget.parentElement?.querySelectorAll('[role="tab"]') ?? []) as unknown as HTMLElement[];
+    tabs[(idx + dir + views.length) % views.length]?.focus();
+  };
+
   return (
     <>
       <div className="browse-tabs" role="tablist" aria-label="Browse">
-        {(["library", "search", "profile"] as const).map((v) => (
+        <SpotifyMark variant="full" size={18} />
+        {views.map((v, i) => (
           <button
             key={v}
             role="tab"
+            id={`browse-tab-${v}`}
             aria-selected={p.state.view === v}
+            aria-controls={`browse-panel-${v}`}
+            tabIndex={p.state.view === v ? 0 : -1}
             className={`chip${p.state.view === v ? " chip-on" : ""}`}
             onClick={() => p.onChange({ ...p.state, view: v, stack: [] })}
+            onKeyDown={(e) => onTabKey(e, i)}
           >
             {v[0].toUpperCase() + v.slice(1)}
           </button>
@@ -562,7 +742,7 @@ export default function BrowsePane(p: Props) {
         {p.state.view === "library" && (
           <>
             <span className="sep" aria-hidden="true" />
-            {(["playlists", "albums", "tracks", "artists"] as const).map((t) => (
+            {(["playlists", "albums", "tracks", "artists", "shows", "episodes", "audiobooks"] as const).map((t) => (
               <button
                 key={t}
                 role="tab"
@@ -587,6 +767,7 @@ export default function BrowsePane(p: Props) {
       </div>
 
       {p.state.view === "library" && (
+        <div role="tabpanel" id="browse-panel-library" aria-labelledby="browse-tab-library">
         <LibraryList
           tab={libTab}
           resetKey={String(gen)}
@@ -596,23 +777,41 @@ export default function BrowsePane(p: Props) {
           onQueueAdd={p.onQueueAdd}
           onError={p.onError}
         />
+        </div>
       )}
 
       {p.state.view === "search" && (
-        <>
+        <div role="tabpanel" id="browse-panel-search" aria-labelledby="browse-tab-search">
+          <div role="search" className="search-wrap">
           <input
             className="search-input"
             value={p.state.query}
-            placeholder="Search songs, artists, playlists…"
+            placeholder="Search songs, artists, playlists, shows…"
             aria-label="Search Spotify"
             onChange={(e) => p.onChange({ ...p.state, query: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                p.onChange({ ...p.state, query: "" });
+              }
+            }}
           />
+          {p.state.query && (
+            <button
+              className="btn sm"
+              onClick={() => p.onChange({ ...p.state, query: "" })}
+              aria-label="Clear search"
+            >
+              Clear
+            </button>
+          )}
+          </div>
           {searching && !results ? (
             <Skeletons />
           ) : !results ? (
             <div className="empty">
               <div className="empty-title">Search Spotify</div>
-              <div className="empty-sub">Results open playlists, artists, and albums.</div>
+              <div className="empty-sub">Results open playlists, artists, albums, shows, episodes, and audiobooks.</div>
             </div>
           ) : (
             <>
@@ -620,7 +819,7 @@ export default function BrowsePane(p: Props) {
                 <>
                   <div className="pane-subhead">Songs</div>
                   <ol className="queue">
-                    {results.tracks.map((t, i) => (
+                    {results.tracks.slice(0, 20).map((t, i) => (
                       <TrackRow
                         key={`s-t-${t.uri}-${i}`}
                         t={t}
@@ -635,7 +834,7 @@ export default function BrowsePane(p: Props) {
                 <>
                   <div className="pane-subhead">Artists</div>
                   <ol className="queue">
-                    {results.artists.map((it) => (
+                    {results.artists.slice(0, 20).map((it) => (
                       <Row
                         key={`s-a-${it.id}`}
                         title={it.name}
@@ -651,7 +850,7 @@ export default function BrowsePane(p: Props) {
                 <>
                   <div className="pane-subhead">Playlists</div>
                   <ol className="queue">
-                    {results.playlists.map((it) => (
+                    {results.playlists.slice(0, 20).map((it) => (
                       <Row
                         key={`s-p-${it.id}`}
                         title={it.name}
@@ -668,7 +867,7 @@ export default function BrowsePane(p: Props) {
                 <>
                   <div className="pane-subhead">Albums</div>
                   <ol className="queue">
-                    {results.albums.map((it) => (
+                    {results.albums.slice(0, 20).map((it) => (
                       <Row
                         key={`s-al-${it.id}`}
                         title={it.name}
@@ -681,13 +880,84 @@ export default function BrowsePane(p: Props) {
                   </ol>
                 </>
               )}
+              {results.shows.length > 0 && (
+                <>
+                  <div className="pane-subhead">Shows</div>
+                  <ol className="queue">
+                    {results.shows.slice(0, 20).map((it) => (
+                      <Row
+                        key={`s-sh-${it.id}`}
+                        title={it.name}
+                        sub={it.subtitle || "Show"}
+                        image={it.image}
+                        onOpen={() => open({ kind: "show", id: it.id, name: it.name })}
+                        onPlay={() => p.onPlayContext(it.uri)}
+                      />
+                    ))}
+                  </ol>
+                </>
+              )}
+              {results.episodes.length > 0 && (
+                <>
+                  <div className="pane-subhead">Episodes</div>
+                  <ol className="queue">
+                    {results.episodes.slice(0, 20).map((t, i) => (
+                      <TrackRow
+                        key={`s-e-${t.uri}-${i}`}
+                        t={t}
+                        onPlay={() => p.onPlayUris([t.uri])}
+                        onQueue={() => p.onQueueAdd(t.uri)}
+                      />
+                    ))}
+                  </ol>
+                </>
+              )}
+              {results.audiobooks.length > 0 && (
+                <>
+                  <div className="pane-subhead">Audiobooks</div>
+                  <ol className="queue">
+                    {results.audiobooks.slice(0, 20).map((it) => (
+                      <Row
+                        key={`s-ab-${it.id}`}
+                        title={it.name}
+                        sub={it.subtitle || "Audiobook"}
+                        image={it.image}
+                        onOpen={() => open({ kind: "audiobook", id: it.id, name: it.name })}
+                        onPlay={() => p.onPlayContext(it.uri)}
+                      />
+                    ))}
+                  </ol>
+                </>
+              )}
+              {results.tracks.length === 0 &&
+                results.artists.length === 0 &&
+                results.playlists.length === 0 &&
+                results.albums.length === 0 &&
+                results.shows.length === 0 &&
+                results.episodes.length === 0 &&
+                results.audiobooks.length === 0 && (
+                  <div className="empty">
+                    <div className="empty-title">No results</div>
+                    <div className="empty-sub">Try a different query.</div>
+                    <button className="btn sm" onClick={() => p.onChange({ ...p.state, query: "" })}>Clear</button>
+                  </div>
+                )}
+              <div className="empty">
+                <div className="empty-title">Categories · Genres · Markets</div>
+                <div className="empty-sub">
+                  Removed or deprecated in 2026 for new client IDs. Open the Spotify app to browse categories.
+                </div>
+                <button className="btn sm" onClick={() => void openUrl("https://open.spotify.com/browse")}>
+                  OPEN SPOTIFY
+                </button>
+              </div>
             </>
           )}
-        </>
+        </div>
       )}
 
       {p.state.view === "profile" && (
-        <>
+        <div role="tabpanel" id="browse-panel-profile" aria-labelledby="browse-tab-profile">
           {profileLoading && !me ? (
             <>
               <div className="skel skel-head" aria-hidden="true" />
@@ -700,7 +970,7 @@ export default function BrowsePane(p: Props) {
                   {me.image && <img src={me.image} alt="" loading="lazy" />}
                   <div>
                     <div className="detail-title">{me.name}</div>
-                    <div className="dim">{me.followers} followers</div>
+                    <div className="dim">{me.accountId}</div>
                   </div>
                 </div>
               )}
@@ -747,7 +1017,7 @@ export default function BrowsePane(p: Props) {
               )}
             </>
           )}
-        </>
+        </div>
       )}
     </>
   );

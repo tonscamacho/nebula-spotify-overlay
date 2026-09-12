@@ -196,3 +196,37 @@ export const RefreshIcon = (p: IconProps) => (
     <path d="M20.5 3.5V8H16" />
   </Base>
 );
+
+// Official Spotify Like glyph: plain plus, never a heart or check.
+export const LikePlusIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 5v14" />
+    <path d="M5 12h14" />
+  </Base>
+);
+
+export const SeekBackIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M11 8.5A5.5 5.5 0 1 0 11 15.5" />
+    <path d="M11 8.5 8.8 6.8" />
+    <path d="M11 8.5h-3" />
+    <path d="M4 4v5h5" />
+  </Base>
+);
+
+export const SeekForwardIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M13 8.5a5.5 5.5 0 1 1 0 7" />
+    <path d="m13 8.5 2.2-1.7" />
+    <path d="M13 8.5h3" />
+    <path d="M20 4v5h-5" />
+  </Base>
+);
+
+export const OpenIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M14 4h6v6" />
+    <path d="M20 4 11 13" />
+    <path d="M19 13.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5.5" />
+  </Base>
+);

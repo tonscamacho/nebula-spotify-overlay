@@ -22,6 +22,8 @@ interface Props {
   ambientTint: boolean;
   autostart: boolean;
   interactive: boolean;
+  editing?: boolean;
+  visible?: boolean;
   clickToSeek: boolean;
   wordKaraoke: boolean;
   transLang: TransLang;
@@ -35,6 +37,8 @@ interface Props {
   onAmbientTint: (v: boolean) => void;
   onAutostart: (v: boolean) => void;
   onInteractToggle: () => void;
+  onEditToggle?: () => void;
+  onVisibilityToggle?: () => void;
   onClickToSeek: (v: boolean) => void;
   onWordKaraoke: (v: boolean) => void;
   onTransLang: (v: TransLang) => void;
@@ -147,17 +151,54 @@ function updateHint(u: UpdateStatus): string {
 }
 
 export default function SettingsModal(p: Props) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!p.open) return;
+    modalRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        p.onClose();
+        return;
+      }
+      if (e.key === "Tab" && modalRef.current) {
+        const els = Array.from(
+          modalRef.current.querySelectorAll<HTMLElement>("button, input, select, [tabindex]"),
+        ).filter((el) => !el.hasAttribute("disabled"));
+        if (els.length === 0) return;
+        const first = els[0];
+        const last = els[els.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [p.open, p.onClose]);
   if (!p.open) return null;
   return (
     <div className="modal-back" onClick={p.onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        ref={modalRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-head">
           <span>Settings</span>
           <button className="icon-btn sm" onClick={p.onClose} aria-label="Close settings">
             <XIcon size={14} />
           </button>
         </div>
-        <label className="row">
+        <div className="row">
           <span>Spotify</span>
           {p.loggedIn ? (
             <button className="btn sm" onClick={p.onLogout}>
@@ -166,104 +207,140 @@ export default function SettingsModal(p: Props) {
           ) : (
             <span className="dim">Logged out</span>
           )}
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Theme</span>
-          <span className="seg">
+          <span className="seg" role="group" aria-label="Theme">
             {(["dark", "light"] as const).map((n) => (
               <button
                 key={n}
                 className={p.theme === n ? "seg-on" : ""}
                 onClick={() => p.onTheme(n)}
+                aria-pressed={p.theme === n}
               >
                 {n}
               </button>
             ))}
           </span>
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Density</span>
-          <span className="seg">
+          <span className="seg" role="group" aria-label="Density">
             {(["compact", "default", "spacious"] as const).map((n) => (
               <button
                 key={n}
                 className={p.density === n ? "seg-on" : ""}
                 onClick={() => p.onDensity(n)}
+                aria-pressed={p.density === n}
               >
                 {n}
               </button>
             ))}
           </span>
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Album-art tint</span>
           <input
             type="checkbox"
             checked={p.ambientTint}
+            aria-label="Album-art tint"
             onChange={(e) => p.onAmbientTint(e.target.checked)}
           />
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Preset</span>
-          <span className="seg">
+          <span className="seg" role="group" aria-label="Preset">
             {(["minimal", "full", "lyrics", "spotlight"] as const).map((n) => (
               <button
                 key={n}
                 className={p.preset === n ? "seg-on" : ""}
                 onClick={() => p.onPreset(n)}
+                aria-pressed={p.preset === n}
               >
                 {n}
               </button>
             ))}
           </span>
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>UI scale</span>
           <input
             type="range"
             min={85}
             max={130}
             value={Math.round(p.uiScale * 100)}
+            aria-label="UI scale"
+            aria-valuetext={`${Math.round(p.uiScale * 100)} percent`}
             onChange={(e) => p.onUiScale(Number(e.target.value) / 100)}
           />
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Launch on login</span>
           <input
             type="checkbox"
             checked={p.autostart}
+            aria-label="Launch on login"
             onChange={(e) => p.onAutostart(e.target.checked)}
           />
-        </label>
-        <label className="row">
-          <span>{p.interactive ? "Mode: interactive" : "Mode: pass-through"}</span>
-          <button className="btn sm" onClick={p.onInteractToggle}>
+        </div>
+        <div className="row">
+          <span>Show / Hide window ({p.keybinds.toggleVisibility})</span>
+          <button
+            className="btn sm"
+            onClick={() => p.onVisibilityToggle?.()}
+            title={`Show / Hide window (${p.keybinds.toggleVisibility})`}
+            aria-pressed={p.visible === false}
+          >
+            {p.visible === false ? "Show" : "Hide"}
+          </button>
+        </div>
+        <div className="row">
+          <span>Edit lock ({p.keybinds.toggleEdit})</span>
+          <button
+            className="btn sm"
+            onClick={() => p.onEditToggle?.()}
+            title={`Edit lock (${p.keybinds.toggleEdit})`}
+            aria-pressed={!!p.editing}
+          >
+            {p.editing ? "Lock" : "Edit"}
+          </button>
+        </div>
+        <div className="row">
+          <span>{p.interactive ? "Mode: interactive" : "Mode: pass-through"} ({p.keybinds.toggleInteract})</span>
+          <button
+            className="btn sm"
+            onClick={p.onInteractToggle}
+            title={`Interact / Pass through (${p.keybinds.toggleInteract})`}
+            aria-pressed={p.interactive}
+          >
             {p.interactive ? "Pass through" : "Interact"}
           </button>
-        </label>
+        </div>
         <div className="hint">
           Pass-through keeps the overlay visible on top while all mouse input
           goes to the game or window below. Press {p.keybinds.toggleInteract},{" "}
-          {p.keybinds.toggleEdit}, or use the tray to interact again. Mouse
+          {p.keybinds.toggleEdit}, {p.keybinds.toggleVisibility}, or use the tray to interact again. Mouse
           alone cannot re-enter while passing through.
         </div>
-        <label className="row">
+        <div className="row">
           <span>Click lyric to seek</span>
           <input
             type="checkbox"
             checked={p.clickToSeek}
+            aria-label="Click lyric to seek"
             onChange={(e) => p.onClickToSeek(e.target.checked)}
           />
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Word-by-word karaoke</span>
           <input
             type="checkbox"
             checked={p.wordKaraoke}
+            aria-label="Word-by-word karaoke"
             onChange={(e) => p.onWordKaraoke(e.target.checked)}
           />
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Lyric translation</span>
           <select
             className="device"
@@ -278,28 +355,28 @@ export default function SettingsModal(p: Props) {
               </option>
             ))}
           </select>
-        </label>
+        </div>
         <div className="hint">
           Translations come from English via a free service, are cached per line, and
           stay silent when offline.
         </div>
-        <label className="row">
+        <div className="row">
           <span>Layout</span>
           <button className="btn sm" onClick={p.onResetLayout}>
             Reset
           </button>
-        </label>
+        </div>
         <div className="hint">
           Each pane has its own opacity slider in its header while interactive
           ({p.keybinds.toggleInteract}, {p.keybinds.toggleEdit}, or the tray).
-          Double-click empty canvas or Esc returns to pass-through.
+          Double-click empty canvas or Esc returns to pass-through. Esc also closes settings.
         </div>
-        <label className="row">
+        <div className="row">
           <span>Shortcuts</span>
           <button className="btn sm" onClick={p.onResetKeybinds}>
             Reset
           </button>
-        </label>
+        </div>
         <div className="hint">
           Global shortcuts work everywhere, even over a game. Focused ones need
           the overlay focused. Click a binding, press the new keys, Esc cancels.
@@ -314,11 +391,11 @@ export default function SettingsModal(p: Props) {
             />
           ))}
         </div>
-        <label className="row">
+        <div className="row">
           <span>App version</span>
           <span className="dim">{p.appVersion || "…"}</span>
-        </label>
-        <label className="row">
+        </div>
+        <div className="row">
           <span>Software update</span>
           {p.update.kind === "available" ? (
             <button className="btn sm primary" onClick={p.onDownloadUpdate}>
@@ -341,8 +418,16 @@ export default function SettingsModal(p: Props) {
                   : "Check for updates"}
             </button>
           )}
-        </label>
+        </div>
         <div className="hint">{updateHint(p.update)}</div>
+        {p.update.kind === "downloading" && (
+          <progress
+            className="update-progress"
+            value={p.update.progress >= 0 ? Math.round(p.update.progress * 100) : undefined}
+            max={100}
+            aria-label={`Downloading update ${Math.round((p.update.progress >= 0 ? p.update.progress : 0) * 100)} percent`}
+          />
+        )}
         {p.update.kind === "available" && p.update.body && (
           <div className="hint">{p.update.body.slice(0, 400)}</div>
         )}

@@ -78,7 +78,11 @@ export default function LyricsPane(p: Props) {
         <div className="empty">
           <div className="empty-title">Lyrics wait for music</div>
           <div className="empty-sub">Play a track to fetch synced lyrics.</div>
+          <button className="btn sm" onClick={p.onRetry}>
+            Retry
+          </button>
         </div>
+        <div className="lyrics-attr">Lyrics provided by LRCLIB</div>
       </>
     );
   }
@@ -145,14 +149,22 @@ export default function LyricsPane(p: Props) {
           const words = karaoke ? c.text.split(" ") : [];
           const doneCount = karaoke ? Math.floor(frac * words.length) : words.length;
           return (
-            <div
+            <button
               key={`${c.t}-${i}`}
-              ref={isActive ? activeRef : undefined}
+              ref={isActive ? (activeRef as React.Ref<HTMLButtonElement>) : undefined}
+              type="button"
               className={
                 blank ? "line gap" : isActive ? "line on" : i < active ? "line past" : "line"
               }
               onClick={p.clickToSeek ? () => p.onSeek(c.t) : undefined}
-              title={p.clickToSeek ? "Seek to this line" : undefined}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && p.clickToSeek) {
+                  e.preventDefault();
+                  p.onSeek(c.t);
+                }
+              }}
+              title={p.clickToSeek ? "Seek to this line" : c.text}
+              aria-current={isActive ? "true" : undefined}
             >
               {karaoke ? (
                 <>
@@ -169,10 +181,11 @@ export default function LyricsPane(p: Props) {
               ) : (
                 c.text
               )}
-            </div>
+            </button>
           );
         })}
       </div>
+      <div className="lyrics-attr">Lyrics provided by LRCLIB</div>
     </>
   );
 }

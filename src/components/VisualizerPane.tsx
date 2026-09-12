@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { NoteIcon } from "./icons";
 
 interface Props {
@@ -88,7 +89,8 @@ export default function VisualizerPane(p: Props) {
     if (reduced) return;
 
     const loop = () => {
-      if (!document.hidden) draw();
+      // Pause the rAF while paused or hidden: one static frame stands in.
+      if (!document.hidden && stateRef.current.isPlaying) draw();
       raf = window.requestAnimationFrame(loop);
     };
     raf = window.requestAnimationFrame(loop);
@@ -104,6 +106,12 @@ export default function VisualizerPane(p: Props) {
           </div>
           <div className="empty-title">Visualizer waits for music</div>
           <div className="empty-sub">Play a track and it moves here.</div>
+          <button
+            className="btn sm"
+            onClick={() => void openUrl("https://open.spotify.com")}
+          >
+            OPEN SPOTIFY
+          </button>
         </div>
       </>
     );
@@ -111,7 +119,7 @@ export default function VisualizerPane(p: Props) {
 
   return (
     <>
-      <div className="viz-meta">
+      <div className="viz-meta" role="status" aria-live="polite" aria-label={p.isPlaying ? "Visualizer live" : "Visualizer paused"}>
         <span>{p.isPlaying ? "Live" : "Paused"}</span>
         <span className="viz-dot" data-on={p.isPlaying ? "1" : "0"} aria-hidden="true" />
       </div>

@@ -118,6 +118,7 @@ export const api = {
   authStatus: () => invoke<{ logged_in: boolean; awaiting_callback: boolean }>("auth_status"),
   startLogin: () => invoke<string>("start_login"),
   logout: () => invoke<void>("logout"),
+  freshToken: () => invoke<string>("get_fresh_token"),
   autostartState: () => invoke<boolean>("autostart_state"),
   setAutostart: (enabled: boolean) => invoke<void>("set_autostart", { enabled }),
   player: async () => parsePlayer(await invoke<unknown>("get_player")),
@@ -140,27 +141,63 @@ export const api = {
   queueAdd: (uri: string, device_id?: string | null) =>
     invoke("add_to_queue", { uri, deviceId: device_id ?? null }),
   me: () => invoke<unknown>("get_me"),
-  user: (user_id: string) => invoke<unknown>("get_user", { userId: user_id }),
   myPlaylists: (limit = 20, offset = 0) =>
     invoke<unknown>("get_my_playlists", { limit, offset }),
-  userPlaylists: (user_id: string, limit = 20, offset = 0) =>
-    invoke<unknown>("get_user_playlists", { userId: user_id, limit, offset }),
+  createPlaylist: (name: string, isPublic = false) =>
+    invoke<unknown>("create_playlist", { name, public: isPublic }),
   savedTracks: (limit = 20, offset = 0) => invoke<unknown>("get_my_tracks", { limit, offset }),
   savedAlbums: (limit = 20, offset = 0) => invoke<unknown>("get_my_albums", { limit, offset }),
+  savedShows: (limit = 20, offset = 0) => invoke<unknown>("get_my_shows", { limit, offset }),
+  savedEpisodes: (limit = 20, offset = 0) => invoke<unknown>("get_my_episodes", { limit, offset }),
+  savedAudiobooks: (limit = 20, offset = 0) => invoke<unknown>("get_my_audiobooks", { limit, offset }),
   followedArtists: (limit = 20, after?: string | null) =>
     invoke<unknown>("get_followed_artists", { limit, after: after ?? null }),
+  myFollowing: (kind: string, limit = 20, after?: string | null) =>
+    invoke<unknown>("get_my_following", { kind, limit, after: after ?? null }),
+  libraryContains: (kind: string, ids: string[]) =>
+    invoke<boolean[]>("library_contains", { kind, ids }),
+  librarySave: (kind: string, ids: string[]) =>
+    invoke<unknown>("library_save", { kind, ids }),
+  libraryRemove: (kind: string, ids: string[]) =>
+    invoke<unknown>("library_remove", { kind, ids }),
+  followPut: (kind: string, ids: string[]) =>
+    invoke<unknown>("follow_put", { kind, ids }),
+  followDelete: (kind: string, ids: string[]) =>
+    invoke<unknown>("follow_delete", { kind, ids }),
   top: (kind: string, limit = 10, offset = 0) =>
     invoke<unknown>("get_my_top", { kind, limit, offset }),
   recent: (limit = 10) => invoke<unknown>("get_recently_played", { limit }),
   playlist: (playlist_id: string) => invoke<unknown>("get_playlist", { playlistId: playlist_id }),
+  playlistItems: (playlist_id: string, limit = 50, offset = 0) =>
+    invoke<unknown>("get_playlist_items", { playlistId: playlist_id, limit, offset }),
   playlistTracks: (playlist_id: string, limit = 50, offset = 0) =>
-    invoke<unknown>("get_playlist_tracks", { playlistId: playlist_id, limit, offset }),
+    invoke<unknown>("get_playlist_items", { playlistId: playlist_id, limit, offset }),
+  playlistAdd: (playlist_id: string, uris: string[]) =>
+    invoke<unknown>("add_playlist_items", { playlistId: playlist_id, uris }),
+  playlistRemove: (playlist_id: string, uris: string[]) =>
+    invoke<unknown>("remove_playlist_items", { playlistId: playlist_id, uris }),
+  playlistReorder: (playlist_id: string, range_start: number, insert_before: number, range_length = 1) =>
+    invoke<unknown>("reorder_playlist_items", { playlistId: playlist_id, rangeStart: range_start, insertBefore: insert_before, rangeLength: range_length }),
+  track: (track_id: string) => invoke<unknown>("get_track", { trackId: track_id }),
   artist: (artist_id: string) => invoke<unknown>("get_artist", { artistId: artist_id }),
-  artistTop: (artist_id: string) => invoke<unknown>("get_artist_top", { artistId: artist_id }),
+  relatedArtists: (artist_id: string) =>
+    invoke<unknown>("get_related_artists", { artistId: artist_id }),
   artistAlbums: (artist_id: string, limit = 10, offset = 0) =>
     invoke<unknown>("get_artist_albums", { artistId: artist_id, limit, offset }),
   album: (album_id: string) => invoke<unknown>("get_album", { albumId: album_id }),
-  searchRaw: (query: string, limit = 5) => invoke<unknown>("search", { query, limit }),
+  albumTracks: (album_id: string, limit = 20, offset = 0) =>
+    invoke<unknown>("get_album_tracks", { albumId: album_id, limit, offset }),
+  show: (show_id: string) => invoke<unknown>("get_show", { showId: show_id }),
+  showEpisodes: (show_id: string, limit = 20, offset = 0) =>
+    invoke<unknown>("get_show_episodes", { showId: show_id, limit, offset }),
+  episode: (episode_id: string) => invoke<unknown>("get_episode", { episodeId: episode_id }),
+  audiobook: (audiobook_id: string) =>
+    invoke<unknown>("get_audiobook", { audiobookId: audiobook_id }),
+  audiobookChapters: (audiobook_id: string, limit = 20, offset = 0) =>
+    invoke<unknown>("get_audiobook_chapters", { audiobookId: audiobook_id, limit, offset }),
+  chapter: (chapter_id: string) => invoke<unknown>("get_chapter", { chapterId: chapter_id }),
+  searchRaw: (query: string, limit = 5, offset = 0) =>
+    invoke<unknown>("search", { query, limit, offset }),
   playContext: (context_uri: string, device_id?: string | null) =>
     invoke("play_context", { contextUri: context_uri, deviceId: device_id ?? null }),
   playUris: (uris: string[], device_id?: string | null) =>

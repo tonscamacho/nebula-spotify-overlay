@@ -1486,3 +1486,197 @@ select:focus-visible,
     height: 44px;
   }
 }
+
+/* ---------- design-overhaul: Spotify rules + premium finish ---------- */
+
+/* Contrast: faint text meets 4.5:1 for 10.5-12.5px titles, meta, hints, times. */
+:root {
+  --faint: rgba(244, 246, 248, 0.65);
+}
+.app[data-theme="light"] {
+  --faint: rgba(20, 24, 31, 0.65);
+}
+
+/* Light-mode placeholder boxes match the theme instead of dark slabs. */
+.app[data-theme="light"] .cover,
+.app[data-theme="light"] .browse-thumb,
+.app[data-theme="light"] .detail-head img {
+  background: rgba(12, 17, 26, 0.08);
+}
+
+/* Dock + sticky subheads blur to match panes. */
+.dock {
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+.pane-subhead,
+.lyrics-meta,
+.viz-meta,
+.browse-tabs {
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+
+/* Toast variants: success + info instead of error-only red. */
+.toast-success::before {
+  background: #1ed760;
+}
+.toast-info::before {
+  background: #6ea8fe;
+}
+.toast-error::before {
+  background: #ff5a52;
+}
+.toasts {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.toasts .toast {
+  position: static;
+  transform: none;
+  pointer-events: auto;
+  animation: toast-in 160ms ease-out;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.modal-back {
+  animation: toast-in 160ms ease-out;
+}
+
+/* Progress hover growth + ambient tint snap get transitions. */
+.bar::before,
+.bar i {
+  transition: height 120ms ease-out;
+}
+.pane-body.has-ambient::before,
+.pane-fill.has-ambient::before {
+  transition: opacity 160ms ease-out;
+}
+
+/* 24px targets: chips + resize halos. */
+.chip {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+}
+.rz::after {
+  inset: -10px;
+}
+
+/* Narrow panes wrap instead of shedding duration and artist. */
+.track-row,
+.device-row {
+  flex-wrap: wrap;
+}
+.search-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.search-wrap .search-input {
+  margin-bottom: 0;
+}
+
+/* Spotify attribution mark: exclusion zone, theme colorway, minima. */
+.spotify-mark {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px;
+  color: #fff;
+  flex: none;
+}
+.app[data-theme="light"] .spotify-mark {
+  color: #000;
+}
+.spotify-mark-full {
+  min-width: 70px;
+}
+.spotify-mark-icon {
+  min-width: 21px;
+  min-height: 21px;
+}
+.row-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--faint);
+}
+.row-mark .spotify-mark {
+  padding: 2px;
+}
+.player-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--stroke);
+}
+.tier {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.track-tier {
+  margin-top: 2px;
+}
+.free-bar .bar.info-only {
+  cursor: default;
+}
+.upgrade {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--dim);
+  margin: 10px 0;
+}
+.lyrics-attr {
+  font-size: 11px;
+  color: var(--faint);
+  padding: 8px 2px 0;
+}
+.update-progress {
+  width: 100%;
+  height: 6px;
+  margin: 6px 0;
+}
+.line {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+button:focus-visible,
+.line:focus-visible {
+  outline: 2px solid rgba(30, 215, 96, 0.7);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbd-live {
+    animation: none;
+  }
+  .toasts .toast,
+  .modal-back {
+    animation: none;
+  }
+}

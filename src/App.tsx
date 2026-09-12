@@ -18,6 +18,7 @@ import {
   XIcon,
 } from "./components/icons";
 import { api, parsePlayer } from "./lib/spotify";
+import { ensurePlayer } from "./lib/player-sdk";
 import { initialBrowse } from "./lib/browse";
 import type { TransLang } from "./lib/translate";
 import {
@@ -97,7 +98,24 @@ export default function App() {
 
   const [layout, setLayout] = useState<PaneState[]>([]);
   const [preset, setPreset] = useState("full");
-  const [interactive, setInteractive] = useState(false);
+  const [interactive, setInteractive] = useState(() => {
+    try {
+      return localStorage.getItem("snapify-interact") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [editing, setEditing] = useState(() => {
+    try {
+      return localStorage.getItem("snapify-edit") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [visible, setVisible] = useState(true);
+  const [toasts, setToasts] = useState<Array<{ id: number; kind: "success" | "info" | "error"; text: string }>>([]);
+  const [tier, setTier] = useState<"premium" | "free">("premium");
+  const [sdkDeviceId, setSdkDeviceId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const [uiScale, setUiScale] = useState(1);
@@ -183,10 +201,20 @@ export default function App() {
     saveLayout({ version: 3, preset: name, panes });
   }, []);
 
-  const flashErr = useCallback((m: string) => {
-    setErr(m);
-    window.setTimeout(() => setErr((e) => (e === m ? null : e)), 6000);
+  const pushToast = useCallback((kind: "success" | "info" | "error", text: string) => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t.slice(-2), { id, kind, text }]);
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6500);
   }, []);
+
+  const flashErr = useCallback(
+    (m: string) => {
+      setErr(m);
+      pushToast("error", m);
+      window.setTimeout(() => setErr((e) => (e === m ? null : e)), 6000);
+    },
+    [pushToast],
+  );
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -366,7 +394,13 @@ export default function App() {
   useEffect(() => {
     const shouldIgnore = loggedIn && !interactive && !settingsOpen;
     void getCurrentWindow().setIgnoreCursorEvents(shouldIgnore).catch(() => {});
-  }, [loggedIn, interactive, settingsOpen]);
+    try {
+      localStorage.setItem("snapify-interact", interactive ? "1" : "0");
+      localStorage.setItem("snapify-edit", editing ? "1" : "0");
+    } catch {
+      // Private mode. Prefs last the session.
+    }
+  }, [loggedIn, interactive, settingsOpen, editing]);
 
   // In-app shortcuts. Global chords (play/pause, next, interact, edit,
   // visibility) arrive as Tauri events even while focused, so they are
@@ -375,10 +409,11 @@ export default function App() {
   // keep working.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Bare Esc always exits edit mode so a remapped legacy chord from a
-      // hand-edited file can never trap the user.
+      // Bare Esc exits edit first, then settings: one exit rule.
       if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        if (interactive) setInteractive(false);
+        if (settingsOpen) setSettingsOpen(false);
+        else if (editing) setEditing(false);
+        else if (interactive) setInteractive(false);
         return;
       }
       const target = e.target as HTMLElement | null;
@@ -613,20 +648,48 @@ export default function App() {
       void run(() => api.next(s.deviceId));
     });
     const offToggle = listen("overlay-toggle-active", () => setInteractive((v) => !v));
-    const offEdit = listen("shortcut-edit", () => setInteractive((v) => !v));
-    const offTrayEdit = listen("tray-toggle-edit", () => setInteractive((v) => !v));
+    const offEdit = listen("shortcut-edit", () => setEditing((v) => !v));
+    const offTrayEdit = listen("tray-toggle-edit", () => setEditing((v) => !v));
     const offTrayPreset = listen("tray-cycle-preset", () => cyclePreset());
     const offTraySettings = listen("tray-open-settings", () => setSettingsOpen(true));
-    const all = [offPlay, offNext, offToggle, offEdit, offTrayEdit, offTrayPreset, offTraySettings];
+    const offVis = listen("overlay-visibility-changed", (e) => setVisible(Boolean(e.payload)));
+    const offSdk = listen<string>("sdk-device-ready", (e) => setSdkDeviceId(String(e.payload)));
+    const offSdkErr = listen<string>("sdk-error", (e) => {
+      const m = String(e.payload);
+      if (/account_error|premium/i.test(m)) setTier("free");
+      pushToast("error", m);
+    });
+    const all = [offPlay, offNext, offToggle, offEdit, offTrayEdit, offTrayPreset, offTraySettings, offVis, offSdk, offSdkErr];
     return () => {
       for (const off of all) void off.then((f) => f());
     };
-  }, [run, cyclePreset]);
+  }, [run, cyclePreset, pushToast]);
+
+  // Headless SDK: create/resume the player inside a user gesture (autoplay
+  // policy). Armed once per login; a hidden or suspended webview stops
+  // audio, so the view stays alive while logged in. Tauri uses WebView2
+  // (Edge/Chromium) on Windows, which supplies EME/Widevine.
+  useEffect(() => {
+    if (!loggedIn) return;
+    const arm = () => {
+      window.removeEventListener("pointerdown", arm);
+      window.removeEventListener("keydown", arm);
+      void ensurePlayer().then((id) => {
+        if (id) setSdkDeviceId(id);
+      });
+    };
+    window.addEventListener("pointerdown", arm);
+    window.addEventListener("keydown", arm);
+    return () => {
+      window.removeEventListener("pointerdown", arm);
+      window.removeEventListener("keydown", arm);
+    };
+  }, [loggedIn]);
 
   // Pane drag + 8-handle resize. Deltas are divided by uiScale because the
   // stage renders under a zoom wrapper while pointer events stay in screen px.
   const beginDrag = (e: React.PointerEvent, id: string, kind: "move" | Handle) => {
-    if (!interactive) return;
+    if (!editing) return;
     e.stopPropagation();
     const pane = layout.find((x) => x.id === id);
     if (!pane) return;
@@ -749,17 +812,17 @@ export default function App() {
     return (
       <section
         key={pane.id}
-        className={`pane${interactive ? " editing" : ""}`}
+        className={`pane${editing ? " editing" : ""}`}
         data-pane={pane.type}
         data-density={density}
         style={{ left: pane.x, top: pane.y, width: pane.w, height: pane.h, zIndex: pane.z, opacity: pane.opacity }}
         onPointerDown={(e) => {
-          if (interactive) e.stopPropagation();
+          if (editing) e.stopPropagation();
         }}
       >
         <header className="pane-handle" onPointerDown={(e) => beginDrag(e, pane.id, "move")}>
-          <span className="pane-title">{PANE_TITLES[pane.type]}</span>
-          {interactive && (
+          <h2 className="pane-title">{PANE_TITLES[pane.type]}</h2>
+          {editing && (
             <>
               <input
                 className="pane-op"
@@ -768,6 +831,7 @@ export default function App() {
                 max={100}
                 value={Math.round(pane.opacity * 100)}
                 aria-label={`${PANE_TITLES[pane.type]} opacity`}
+                aria-valuetext={`${Math.round(pane.opacity * 100)} percent`}
                 title="Pane opacity"
                 onPointerDown={(e) => e.stopPropagation()}
                 onChange={(e) => setPaneOpacity(pane.id, Number(e.target.value) / 100)}
@@ -784,23 +848,32 @@ export default function App() {
               progressMs={progressMs}
               busy={busy}
               ambientOn={ambientTint}
-              onPlay={() => void run(() => api.play(snap.deviceId))}
-              onPause={() => void run(() => api.pause(snap.deviceId))}
-              onNext={() => void run(() => api.next(snap.deviceId))}
-              onPrev={() => void run(() => api.prev(snap.deviceId))}
-              onSeek={(ms) => void run(() => api.seek(ms, snap.deviceId))}
+              tier={tier}
+              sdkDeviceId={sdkDeviceId}
+              onPlay={() =>
+                void (async () => {
+                  const target = snap.deviceId ?? sdkDeviceId ?? (await ensurePlayer());
+                  if (target) setSdkDeviceId((cur) => cur ?? target);
+                  await run(() => api.play(target));
+                })()
+              }
+              onPause={() => void run(() => api.pause(snap.deviceId ?? sdkDeviceId))}
+              onNext={() => void run(() => api.next(snap.deviceId ?? sdkDeviceId))}
+              onPrev={() => void run(() => api.prev(snap.deviceId ?? sdkDeviceId))}
+              onSeek={(ms) => void run(() => api.seek(ms, snap.deviceId ?? sdkDeviceId))}
               onVolume={(v) => {
                 setSnap((s) => ({ ...s, volume: v }));
-                void run(() => api.volume(v, snap.deviceId));
+                void run(() => api.volume(v, snap.deviceId ?? sdkDeviceId));
               }}
-              onShuffle={() => void run(() => api.shuffle(!snap.shuffle, snap.deviceId))}
-              onRepeat={() => void run(() => api.repeat(repeatNext, snap.deviceId))}
+              onShuffle={() => void run(() => api.shuffle(!snap.shuffle, snap.deviceId ?? sdkDeviceId))}
+              onRepeat={() => void run(() => api.repeat(repeatNext, snap.deviceId ?? sdkDeviceId))}
               onTransfer={(id) =>
-                void run(() => api.transfer(id, true), () => {
+                void run(() => api.transfer(id, false), () => {
                   void fetchDevices();
                 })
               }
               onRefreshDevices={() => void fetchDevices()}
+              onToast={(kind, text) => pushToast(kind, text)}
             />
           )}
           {pane.type === "lyrics" && (
@@ -810,7 +883,7 @@ export default function App() {
               clickToSeek={clickToSeek}
               wordKaraoke={wordKaraoke}
               transLang={transLang}
-              onSeek={(ms) => void run(() => api.seek(ms, snap.deviceId))}
+              onSeek={(ms) => void run(() => api.seek(ms, snap.deviceId ?? sdkDeviceId))}
               onRetry={() => trackIdRef.current && void fetchLyrics(trackIdRef.current)}
             />
           )}
@@ -820,6 +893,7 @@ export default function App() {
               upcoming={queue.upcoming}
               loading={queueLoading}
               onRefresh={() => void fetchQueue()}
+              onBrowse={() => applyPreset("full")}
             />
           )}
           {pane.type === "visualizer" && (
@@ -828,12 +902,12 @@ export default function App() {
           {pane.type === "browse" && (
             <BrowsePane
               state={browse}
-              deviceId={snap.deviceId}
+              deviceId={snap.deviceId ?? sdkDeviceId}
               onChange={setBrowse}
-              onPlayContext={(uri) => void run(() => api.playContext(uri, snap.deviceId))}
-              onPlayUris={(uris) => void run(() => api.playUris(uris, snap.deviceId))}
+              onPlayContext={(uri) => void run(() => api.playContext(uri, snap.deviceId ?? sdkDeviceId))}
+              onPlayUris={(uris) => void run(() => api.playUris(uris, snap.deviceId ?? sdkDeviceId))}
               onQueueAdd={(uri) =>
-                void run(() => api.queueAdd(uri, snap.deviceId), () => {
+                void run(() => api.queueAdd(uri, snap.deviceId ?? sdkDeviceId), () => {
                   void fetchQueue();
                 })
               }
@@ -841,7 +915,7 @@ export default function App() {
             />
           )}
         </div>
-        {interactive &&
+        {editing &&
           HANDLES.map((hh) => (
             <div
               key={hh}
@@ -876,11 +950,11 @@ export default function App() {
             onPointerMove={onStageMove}
             onPointerUp={onStageUp}
             onDoubleClick={(e) => {
-              // Reachable only while interactive: passive mode passes all
+              // Reachable only while editing: passive mode passes all
               // mouse events to the game below, so re-entry is via the
               // interact shortcut, edit shortcut, or the tray.
               if (e.target === e.currentTarget) {
-                setInteractive(false);
+                setEditing(false);
               }
             }}
           >
@@ -895,23 +969,38 @@ export default function App() {
         </div>
       )}
 
-      {interactive && loggedIn && (
+      {(editing || interactive) && loggedIn && (
         <div className="dock" role="toolbar" aria-label="Overlay editor">
           <button
             className="tbtn"
-            onClick={() => setInteractive(false)}
-            title="Pass through to game (Esc)"
-            aria-label="Pass through to game"
+            onClick={() => {
+              const win = getCurrentWindow();
+              if (visible) void win.hide().then(() => setVisible(false));
+              else void win.show().then(() => setVisible(true));
+            }}
+            title={`Show / Hide window (${keybinds.toggleVisibility})`}
+            aria-label="Show or hide window"
+            aria-pressed={!visible}
           >
-            <LockIcon size={15} />
+            {visible ? <LockIcon size={15} /> : <UnlockIcon size={15} />}
           </button>
           <button
             className="tbtn"
-            onClick={cyclePreset}
-            title={`Cycle preset (${keybinds.cyclePreset})`}
-            aria-label="Cycle preset"
+            onClick={() => setEditing((v) => !v)}
+            title={`Edit lock (${keybinds.toggleEdit})`}
+            aria-label="Toggle edit lock"
+            aria-pressed={editing}
           >
             <ListIcon size={15} />
+          </button>
+          <button
+            className="tbtn"
+            onClick={() => setInteractive((v) => !v)}
+            title={`Interact / Pass through (${keybinds.toggleInteract})`}
+            aria-label="Toggle interact"
+            aria-pressed={interactive}
+          >
+            <SlidersIcon size={15} />
           </button>
           <span className="dock-sep" aria-hidden="true" />
           {PANE_TYPES.map((t) => {
@@ -922,6 +1011,7 @@ export default function App() {
                 className={`chip${on ? " chip-on" : ""}`}
                 onClick={() => togglePaneType(t)}
                 title={`Toggle ${PANE_TITLES[t]} pane`}
+                aria-pressed={on}
               >
                 {PANE_TITLES[t]}
               </button>
@@ -938,11 +1028,22 @@ export default function App() {
           </button>
           <button
             className="tbtn"
-            onClick={() => setInteractive(false)}
-            title={`Pass through (${keybinds.toggleInteract})`}
+            onClick={() => {
+              setInteractive(false);
+              setEditing(false);
+            }}
+            title={`Pass through (${keybinds.toggleInteract}, Esc)`}
             aria-label="Pass through to game"
           >
             <UnlockIcon size={15} />
+          </button>
+          <button
+            className="tbtn"
+            onClick={cyclePreset}
+            title={`Cycle preset (${keybinds.cyclePreset})`}
+            aria-label="Cycle preset"
+          >
+            <ListIcon size={15} />
           </button>
           <button
             className="tbtn"
@@ -955,8 +1056,41 @@ export default function App() {
         </div>
       )}
 
-      {err && (
-        <div className="toast">
+      <div className="toasts" role="status" aria-live="polite">
+        {toasts.slice(-1).map((t) => (
+          <div key={t.id} className={`toast toast-${t.kind}`}>
+            <span>{t.text}</span>
+            <button
+              className="btn sm"
+              onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}
+              aria-label="Dismiss notification"
+            >
+              Dismiss
+            </button>
+            {/missing permission|new permissions/i.test(t.text) && (
+              <button
+                className="btn sm"
+                onClick={() => {
+                  setToasts((x) => x.filter((y) => y.id !== t.id));
+                  setErr(null);
+                  void logout().finally(() => void login());
+                }}
+              >
+                Reconnect
+              </button>
+            )}
+            <button
+              className="btn sm"
+              onClick={() => void openUrl("https://open.spotify.com")}
+            >
+              Open Spotify
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {err && !toasts.length && (
+        <div className="toast toast-error">
           <span>{err}</span>
           {/missing permission|new permissions/i.test(err) && (
             <button
@@ -1019,6 +1153,14 @@ export default function App() {
           });
         }}
         onInteractToggle={() => setInteractive((v) => !v)}
+        onEditToggle={() => setEditing((v) => !v)}
+        onVisibilityToggle={() => {
+          const win = getCurrentWindow();
+          if (visible) void win.hide().then(() => setVisible(false));
+          else void win.show().then(() => setVisible(true));
+        }}
+        editing={editing}
+        visible={visible}
         onClickToSeek={setClickToSeek}
         onWordKaraoke={(v) => {
           setWordKaraoke(v);

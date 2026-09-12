@@ -92,6 +92,14 @@ fn decide(
     body: &str,
 ) -> Result<serde_json::Value, String> {
     if status == StatusCode::TOO_MANY_REQUESTS {
+        // Quota is shared per developer account and distinct from rate
+        // limits. QUOTA_EXCEEDED backs off longer and never spins hot.
+        if body.contains("QUOTA_EXCEEDED") || body.contains("quota") {
+            return Err(format!(
+                "quota-exceeded: developer quota hit, back off and retry after {}s. Detail reads run on demand only.",
+                retry_after.unwrap_or("30")
+            ));
+        }
         return Err(format!(
             "rate-limited: retry after {}s",
             retry_after.unwrap_or("2")
@@ -288,12 +296,11 @@ async fn paged(
 
 #[tauri::command]
 pub async fn get_me(app: AppHandle) -> Result<serde_json::Value, String> {
+    // Self only. Do not rely on stale fields removed in Feb 2026:
+    // popularity, followers, available_markets, label, publisher,
+    // linked_from, country, product. Frontend uses id/display_name/images only.
+    // Bulk `?ids=` is never called; callers loop singly with quota backoff.
     call(&app, Method::GET, "/me", &[], None).await
-}
-
-#[tauri::command]
-pub async fn get_user(app: AppHandle, user_id: String) -> Result<serde_json::Value, String> {
-    call(&app, Method::GET, &format!("/users/{}", user_id), &[], None).await
 }
 
 #[tauri::command]
@@ -306,21 +313,13 @@ pub async fn get_my_playlists(
 }
 
 #[tauri::command]
-pub async fn get_user_playlists(
+pub async fn create_playlist(
     app: AppHandle,
-    user_id: String,
-    limit: i64,
-    offset: i64,
+    name: String,
+    public: bool,
 ) -> Result<serde_json::Value, String> {
-    paged(
-        &app,
-        Method::GET,
-        &format!("/users/{user_id}/playlists"),
-        &[],
-        limit,
-        offset,
-    )
-    .await
+    let body = serde_json::json!({ "name": name, "public": public });
+    call(&app, Method::POST, "/me/playlists", &[], Some(body)).await
 }
 
 #[tauri::command]
@@ -339,6 +338,129 @@ pub async fn get_my_albums(
     offset: i64,
 ) -> Result<serde_json::Value, String> {
     paged(&app, Method::GET, "/me/albums", &[], limit, offset).await
+}
+
+#[tauri::command]
+pub async fn get_my_shows(
+    app: AppHandle,
+    limit: i64,
+    offset: i64,
+) -> Result<serde_json::Value, String> {
+    paged(&app, Method::GET, "/me/shows", &[], limit, offset).await
+}
+
+#[tauri::command]
+pub async fn get_my_episodes(
+    app: AppHandle,
+    limit: i64,
+    offset: i64,
+) -> Result<serde_json::Value, String> {
+    paged(&app, Method::GET, "/me/episodes", &[], limit, offset).await
+}
+
+#[tauri::command]
+pub async fn get_my_audiobooks(
+    app: AppHandle,
+    limit: i64,
+    offset: i64,
+) -> Result<serde_json::Value, String> {
+    paged(&app, Method::GET, "/me/audiobooks", &[], limit, offset).await
+}
+
+#[tauri::command]
+pub async fn get_my_following(
+    app: AppHandle,
+    kind: String,
+    limit: i64,
+    after: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let t = match kind.as_str() {
+        "show" | "episode" | "audiobook" => kind,
+        _ => "artist".to_string(),
+    };
+    let ls = limit.clamp(1, 50).to_string();
+    let mut q = vec![("type", t.as_str()), ("limit", ls.as_str())];
+    if let Some(a) = &after {
+        q.push(("after", a.as_str()));
+    }
+    call(&app, Method::GET, "/me/following", &q, None).await
+}
+
+#[tauri::command]
+pub async fn library_contains(
+    app: AppHandle,
+    kind: String,
+    ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    // Removed bulk `?ids=` loops singly with quota backoff: one id per
+    // request, sequential, so a 429 backs off without losing place.
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids.iter().take(50) {
+        let q = [("ids", id.as_str())];
+        let path = match kind.as_str() {
+            "album" => "/me/albums/contains",
+            "episode" => "/me/episodes/contains",
+            "audiobook" => "/me/audiobooks/contains",
+            "show" => "/me/shows/contains",
+            _ => "/me/tracks/contains",
+        };
+        match call(&app, Method::GET, path, &q, None).await {
+            Ok(v) => {
+                let flag = v.as_array().and_then(|a| a.first()).and_then(|x| x.as_bool()).unwrap_or(false);
+                out.push(flag);
+            }
+            Err(e) if e.contains("quota-exceeded") || e.contains("rate-limited") => {
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(serde_json::Value::Array(out.into_iter().map(serde_json::Value::Bool).collect()))
+}
+
+#[tauri::command]
+pub async fn library_save(
+    app: AppHandle,
+    kind: String,
+    ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    // Universal heart through PUT /me/library. Never save liked content locally.
+    let body = serde_json::json!({ "ids": ids, "kind": kind });
+    call(&app, Method::PUT, "/me/library", &[], Some(body)).await
+}
+
+#[tauri::command]
+pub async fn library_remove(
+    app: AppHandle,
+    kind: String,
+    ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let body = serde_json::json!({ "ids": ids, "kind": kind });
+    call(&app, Method::DELETE, "/me/library", &[], Some(body)).await
+}
+
+#[tauri::command]
+pub async fn follow_put(
+    app: AppHandle,
+    kind: String,
+    ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let t = if kind == "show" || kind == "episode" { kind } else { "artist".to_string() };
+    let q = [("type", t.as_str())];
+    let body = serde_json::json!({ "ids": ids });
+    call(&app, Method::PUT, "/me/following", &q, Some(body)).await
+}
+
+#[tauri::command]
+pub async fn follow_delete(
+    app: AppHandle,
+    kind: String,
+    ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let t = if kind == "show" || kind == "episode" { kind } else { "artist".to_string() };
+    let q = [("type", t.as_str())];
+    let body = serde_json::json!({ "ids": ids });
+    call(&app, Method::DELETE, "/me/following", &q, Some(body)).await
 }
 
 #[tauri::command]
@@ -392,16 +514,17 @@ pub async fn get_playlist(app: AppHandle, playlist_id: String) -> Result<serde_j
 }
 
 #[tauri::command]
-pub async fn get_playlist_tracks(
+pub async fn get_playlist_items(
     app: AppHandle,
     playlist_id: String,
     limit: i64,
     offset: i64,
 ) -> Result<serde_json::Value, String> {
+    // New path: /playlists/{id}/items (param tracks -> items).
     paged(
         &app,
         Method::GET,
-        &format!("/playlists/{playlist_id}/tracks"),
+        &format!("/playlists/{playlist_id}/items"),
         &[],
         limit,
         offset,
@@ -410,21 +533,83 @@ pub async fn get_playlist_tracks(
 }
 
 #[tauri::command]
+pub async fn add_playlist_items(
+    app: AppHandle,
+    playlist_id: String,
+    uris: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let body = serde_json::json!({ "uris": uris });
+    call(
+        &app,
+        Method::POST,
+        &format!("/playlists/{playlist_id}/items"),
+        &[],
+        Some(body),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remove_playlist_items(
+    app: AppHandle,
+    playlist_id: String,
+    uris: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let items: Vec<serde_json::Value> = uris.into_iter().map(|u| serde_json::json!({ "uri": u })).collect();
+    let body = serde_json::json!({ "items": items });
+    call(
+        &app,
+        Method::DELETE,
+        &format!("/playlists/{playlist_id}/items"),
+        &[],
+        Some(body),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn reorder_playlist_items(
+    app: AppHandle,
+    playlist_id: String,
+    range_start: i64,
+    insert_before: i64,
+    range_length: i64,
+) -> Result<serde_json::Value, String> {
+    let body = serde_json::json!({
+        "range_start": range_start,
+        "insert_before": insert_before,
+        "range_length": range_length,
+    });
+    call(
+        &app,
+        Method::PUT,
+        &format!("/playlists/{playlist_id}/items"),
+        &[],
+        Some(body),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_track(app: AppHandle, track_id: String) -> Result<serde_json::Value, String> {
+    call(&app, Method::GET, &format!("/tracks/{track_id}"), &[], None).await
+}
+
+#[tauri::command]
 pub async fn get_artist(app: AppHandle, artist_id: String) -> Result<serde_json::Value, String> {
     call(&app, Method::GET, &format!("/artists/{artist_id}"), &[], None).await
 }
 
 #[tauri::command]
-pub async fn get_artist_top(
+pub async fn get_related_artists(
     app: AppHandle,
     artist_id: String,
 ) -> Result<serde_json::Value, String> {
-    let q = [("market", "US")];
     call(
         &app,
         Method::GET,
-        &format!("/artists/{artist_id}/top-tracks"),
-        &q,
+        &format!("/artists/{artist_id}/related-artists"),
+        &[],
         None,
     )
     .await
@@ -450,7 +635,85 @@ pub async fn get_artist_albums(
 
 #[tauri::command]
 pub async fn get_album(app: AppHandle, album_id: String) -> Result<serde_json::Value, String> {
+    // Always fetch explicit and URI types for badges and ±15s layouts.
     call(&app, Method::GET, &format!("/albums/{album_id}"), &[], None).await
+}
+
+#[tauri::command]
+pub async fn get_album_tracks(
+    app: AppHandle,
+    album_id: String,
+    limit: i64,
+    offset: i64,
+) -> Result<serde_json::Value, String> {
+    paged(
+        &app,
+        Method::GET,
+        &format!("/albums/{album_id}/tracks"),
+        &[],
+        limit,
+        offset,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_show(app: AppHandle, show_id: String) -> Result<serde_json::Value, String> {
+    call(&app, Method::GET, &format!("/shows/{show_id}"), &[], None).await
+}
+
+#[tauri::command]
+pub async fn get_show_episodes(
+    app: AppHandle,
+    show_id: String,
+    limit: i64,
+    offset: i64,
+) -> Result<serde_json::Value, String> {
+    paged(
+        &app,
+        Method::GET,
+        &format!("/shows/{show_id}/episodes"),
+        &[],
+        limit,
+        offset,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_episode(app: AppHandle, episode_id: String) -> Result<serde_json::Value, String> {
+    call(&app, Method::GET, &format!("/episodes/{episode_id}"), &[], None).await
+}
+
+#[tauri::command]
+pub async fn get_audiobook(
+    app: AppHandle,
+    audiobook_id: String,
+) -> Result<serde_json::Value, String> {
+    call(&app, Method::GET, &format!("/audiobooks/{audiobook_id}"), &[], None).await
+}
+
+#[tauri::command]
+pub async fn get_audiobook_chapters(
+    app: AppHandle,
+    audiobook_id: String,
+    limit: i64,
+    offset: i64,
+) -> Result<serde_json::Value, String> {
+    paged(
+        &app,
+        Method::GET,
+        &format!("/audiobooks/{audiobook_id}/chapters"),
+        &[],
+        limit,
+        offset,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_chapter(app: AppHandle, chapter_id: String) -> Result<serde_json::Value, String> {
+    call(&app, Method::GET, &format!("/chapters/{chapter_id}"), &[], None).await
 }
 
 #[tauri::command]
@@ -458,17 +721,22 @@ pub async fn search(
     app: AppHandle,
     query: String,
     limit: i64,
+    offset: i64,
 ) -> Result<serde_json::Value, String> {
+    // Search capped: limit max 10, default 5, paginate by offset.
+    // Shelves cap at 20 items downstream. Cache briefly, refresh on view.
     let q = query.trim().to_string();
     if q.is_empty() {
         return Ok(serde_json::json!({ "empty": true }));
     }
     let ls = limit.clamp(1, 10).to_string();
-    let types = "track,artist,playlist,album";
+    let os = offset.max(0).to_string();
+    let types = "album,artist,playlist,track,show,episode,audiobook";
     let qq = [
         ("q", q.as_str()),
         ("type", types),
         ("limit", ls.as_str()),
+        ("offset", os.as_str()),
     ];
     call(&app, Method::GET, "/search", &qq, None).await
 }
@@ -559,5 +827,13 @@ mod tests {
             decide(StatusCode::TOO_MANY_REQUESTS, Some("7"), "").unwrap_err(),
             "rate-limited: retry after 7s"
         );
+    }
+
+    #[test]
+    fn quota_exceeded_is_distinct_from_rate_limit() {
+        let body = r#"{"error":{"status":429,"message":"QUOTA_EXCEEDED"}}"#;
+        let err = decide(StatusCode::TOO_MANY_REQUESTS, Some("30"), body).unwrap_err();
+        assert!(err.contains("quota-exceeded"), "quota lost: {err}");
+        assert!(err.contains("30s"), "backoff lost: {err}");
     }
 }

@@ -88,7 +88,11 @@ export type BrowseEntry =
   | { kind: "playlist"; id: string; name?: string }
   | { kind: "album"; id: string; name?: string }
   | { kind: "artist"; id: string; name?: string }
-  | { kind: "profile"; id: string; name?: string };
+  | { kind: "show"; id: string; name?: string }
+  | { kind: "episode"; id: string; name?: string }
+  | { kind: "audiobook"; id: string; name?: string }
+  | { kind: "chapter"; id: string; name?: string }
+  | { kind: "track"; id: string; name?: string };
 
 export interface BrowseState {
   view: BrowseView;
@@ -106,19 +110,27 @@ export interface LibraryItem {
 
 export type DetailData =
   | { kind: "playlist"; name: string; image: string | null; owner: string; tracks: QueueItem[]; uri: string }
-  | { kind: "album"; name: string; image: string | null; artists: string; tracks: QueueItem[]; uri: string }
-  | { kind: "artist"; name: string; image: string | null; genres: string[]; topTracks: QueueItem[]; uri: string };
+  | { kind: "album"; name: string; image: string | null; artists: string; tracks: QueueItem[]; uri: string; explicit: boolean }
+  | { kind: "artist"; name: string; image: string | null; genres: string[]; topTracks: QueueItem[]; albums: LibraryItem[]; uri: string }
+  | { kind: "show"; name: string; image: string | null; publisher: string; episodes: QueueItem[]; uri: string; explicit: boolean }
+  | { kind: "episode"; name: string; image: string | null; show: string; durationMs: number; uri: string; explicit: boolean; uriType: "episode" }
+  | { kind: "audiobook"; name: string; image: string | null; authors: string; chapters: QueueItem[]; uri: string; explicit: boolean }
+  | { kind: "chapter"; name: string; image: string | null; book: string; durationMs: number; uri: string; explicit: boolean; uriType: "chapter" }
+  | { kind: "track"; name: string; image: string | null; artists: string; album: string; durationMs: number; uri: string; explicit: boolean; uriType: "track" };
 
 export interface SearchResults {
   tracks: QueueItem[];
   artists: LibraryItem[];
   playlists: LibraryItem[];
   albums: LibraryItem[];
+  shows: LibraryItem[];
+  episodes: QueueItem[];
+  audiobooks: LibraryItem[];
 }
 
 export interface UserProfile {
   id: string;
   name: string;
   image: string | null;
-  followers: number;
+  accountId: string;
 }

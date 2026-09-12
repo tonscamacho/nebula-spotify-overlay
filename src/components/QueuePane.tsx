@@ -7,6 +7,7 @@ interface Props {
   upcoming: QueueItem[];
   loading: boolean;
   onRefresh: () => void;
+  onBrowse?: () => void;
 }
 
 export default function QueuePane(p: Props) {
@@ -36,6 +37,14 @@ export default function QueuePane(p: Props) {
         <div className="empty">
           <div className="empty-title">Queue is empty</div>
           <div className="empty-sub">Spotify builds it as you listen.</div>
+          <button className="btn sm" onClick={p.onRefresh}>
+            Refresh
+          </button>{" "}
+          {p.onBrowse && (
+            <button className="btn sm" onClick={p.onBrowse}>
+              Browse
+            </button>
+          )}
         </div>
       ) : (
         <ol className="queue">

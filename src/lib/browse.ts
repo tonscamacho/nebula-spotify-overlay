@@ -118,10 +118,14 @@ export function parsePlaylistDetail(raw: unknown): DetailData | null {
   const o = raw as Record<string, unknown>;
   if (typeof o["id"] !== "string") return null;
   const owner = o["owner"] as Record<string, unknown> | undefined;
+  // New path /playlists/{id}/items nests under items[].track (or episode).
   const tracksNode = o["tracks"] as Record<string, unknown> | undefined;
-  const list = tracksNode && Array.isArray(tracksNode["items"]) ? tracksNode["items"] : [];
+  const itemsNode = o["items"];
+  const list = tracksNode && Array.isArray(tracksNode["items"])
+    ? tracksNode["items"]
+    : Array.isArray(itemsNode) ? itemsNode : [];
   const tracks = (list as Array<Record<string, unknown>>)
-    .map((w) => w["track"] as Record<string, unknown> | undefined)
+    .map((w) => (w["track"] as Record<string, unknown> | undefined) ?? w)
     .filter((t): t is Record<string, unknown> => !!t && typeof t["uri"] === "string")
     .map(queueItem);
   return {
@@ -155,22 +159,116 @@ export function parseAlbumDetail(raw: unknown): DetailData | null {
     artists: albumArtists,
     tracks,
     uri: typeof o["uri"] === "string" ? (o["uri"] as string) : "",
+    explicit: o["explicit"] === true,
+  };
+}
+
+export function parseShowDetail(raw: unknown, episodesRaw: unknown): DetailData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o["id"] !== "string") return null;
+  const e = (episodesRaw as Record<string, unknown> | null) ?? {};
+  const list = Array.isArray(e["items"]) ? (e["items"] as Array<Record<string, unknown>>) : [];
+  return {
+    kind: "show",
+    name: typeof o["name"] === "string" ? (o["name"] as string) : "Show",
+    image: img(o["images"]),
+    publisher: typeof o["publisher"] === "string" ? (o["publisher"] as string) : "",
+    episodes: list.filter((t) => typeof t["uri"] === "string").map(queueItem),
+    uri: typeof o["uri"] === "string" ? (o["uri"] as string) : "",
+    explicit: o["explicit"] === true,
+  };
+}
+
+export function parseEpisodeDetail(raw: unknown): DetailData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o["id"] !== "string") return null;
+  const show = o["show"] as Record<string, unknown> | undefined;
+  return {
+    kind: "episode",
+    name: typeof o["name"] === "string" ? (o["name"] as string) : "Episode",
+    image: img(o["images"]),
+    show: show && typeof show["name"] === "string" ? (show["name"] as string) : "",
+    durationMs: typeof o["duration_ms"] === "number" ? (o["duration_ms"] as number) : 0,
+    uri: typeof o["uri"] === "string" ? (o["uri"] as string) : "",
+    explicit: o["explicit"] === true,
+    uriType: "episode",
+  };
+}
+
+export function parseAudiobookDetail(raw: unknown, chaptersRaw: unknown): DetailData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o["id"] !== "string") return null;
+  const c = (chaptersRaw as Record<string, unknown> | null) ?? {};
+  const list = Array.isArray(c["items"]) ? (c["items"] as Array<Record<string, unknown>>) : [];
+  const authorList = Array.isArray(o["authors"])
+    ? (o["authors"] as Array<Record<string, unknown>>)
+        .map((a) => (typeof a["name"] === "string" ? (a["name"] as string) : ""))
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  return {
+    kind: "audiobook",
+    name: typeof o["name"] === "string" ? (o["name"] as string) : "Audiobook",
+    image: img(o["images"]),
+    authors: authorList,
+    chapters: list.filter((t) => typeof t["uri"] === "string").map(queueItem),
+    uri: typeof o["uri"] === "string" ? (o["uri"] as string) : "",
+    explicit: o["explicit"] === true,
+  };
+}
+
+export function parseChapterDetail(raw: unknown): DetailData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o["id"] !== "string") return null;
+  const book = o["audiobook"] as Record<string, unknown> | undefined;
+  return {
+    kind: "chapter",
+    name: typeof o["name"] === "string" ? (o["name"] as string) : "Chapter",
+    image: img(o["images"]),
+    book: book && typeof book["name"] === "string" ? (book["name"] as string) : "",
+    durationMs: typeof o["duration_ms"] === "number" ? (o["duration_ms"] as number) : 0,
+    uri: typeof o["uri"] === "string" ? (o["uri"] as string) : "",
+    explicit: o["explicit"] === true,
+    uriType: "chapter",
+  };
+}
+
+export function parseTrackDetail(raw: unknown): DetailData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o["id"] !== "string") return null;
+  const album = o["album"] as Record<string, unknown> | undefined;
+  return {
+    kind: "track",
+    name: typeof o["name"] === "string" ? (o["name"] as string) : "Track",
+    image: album ? img(album["images"]) : null,
+    artists: artists(o),
+    album: album && typeof album["name"] === "string" ? (album["name"] as string) : "",
+    durationMs: typeof o["duration_ms"] === "number" ? (o["duration_ms"] as number) : 0,
+    uri: typeof o["uri"] === "string" ? (o["uri"] as string) : "",
+    explicit: o["explicit"] === true,
+    uriType: "track",
   };
 }
 
 export function parseArtistDetail(
   artist: unknown,
-  top: unknown,
   albums: unknown,
+  related: unknown,
 ): DetailData | null {
   if (!artist || typeof artist !== "object") return null;
   const o = artist as Record<string, unknown>;
   if (typeof o["id"] !== "string") return null;
-  const topList =
-    top && typeof top === "object" && Array.isArray((top as Record<string, unknown>)["tracks"])
-      ? ((top as Record<string, unknown>)["tracks"] as Array<Record<string, unknown>>)
-      : [];
-  void albums;
+  // Dropped GET /artists/{id}/top-tracks. Replaced with albums strip +
+  // search fallback. Top tracks now come from the albums strip when present.
+  void related;
+  const al = (albums as Record<string, unknown> | null) ?? {};
+  const alList = Array.isArray(al["items"]) ? (al["items"] as Array<Record<string, unknown>>) : [];
+  const topList: Array<Record<string, unknown>> = [];
   return {
     kind: "artist",
     name: typeof o["name"] === "string" ? (o["name"] as string) : "Artist",
@@ -179,12 +277,13 @@ export function parseArtistDetail(
       ? (o["genres"] as unknown[]).filter((g): g is string => typeof g === "string").slice(0, 3)
       : [],
     topTracks: topList.map(queueItem),
+    albums: alList.map((a) => toLibraryItem(a, "Album")),
     uri: typeof o["uri"] === "string" ? (o["uri"] as string) : "",
   };
 }
 
 export function parseSearch(raw: unknown): SearchResults {
-  const out: SearchResults = { tracks: [], artists: [], playlists: [], albums: [] };
+  const out: SearchResults = { tracks: [], artists: [], playlists: [], albums: [], shows: [], episodes: [], audiobooks: [] };
   if (!raw || typeof raw !== "object") return out;
   const o = raw as Record<string, unknown>;
   const t = o["tracks"] as Record<string, unknown> | undefined;
@@ -210,6 +309,27 @@ export function parseSearch(raw: unknown): SearchResults {
       .slice(0, 5)
       .map((x) => toLibraryItem(x, "Album"));
   }
+  const sh = o["shows"] as Record<string, unknown> | undefined;
+  if (sh && Array.isArray(sh["items"])) {
+    out.shows = (sh["items"] as Array<Record<string, unknown>>)
+      .filter((x) => x && typeof x["id"] === "string")
+      .slice(0, 5)
+      .map((x) => toLibraryItem(x, "Show"));
+  }
+  const ep = o["episodes"] as Record<string, unknown> | undefined;
+  if (ep && Array.isArray(ep["items"])) {
+    out.episodes = (ep["items"] as Array<Record<string, unknown>>)
+      .filter((x) => x && typeof x["uri"] === "string")
+      .slice(0, 5)
+      .map(queueItem);
+  }
+  const ab = o["audiobooks"] as Record<string, unknown> | undefined;
+  if (ab && Array.isArray(ab["items"])) {
+    out.audiobooks = (ab["items"] as Array<Record<string, unknown>>)
+      .filter((x) => x && typeof x["id"] === "string")
+      .slice(0, 5)
+      .map((x) => toLibraryItem(x, "Audiobook"));
+  }
   return out;
 }
 
@@ -217,7 +337,8 @@ export function parseUserProfile(raw: unknown): UserProfile | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   if (typeof o["id"] !== "string") return null;
-  const followers = o["followers"] as Record<string, unknown> | undefined;
+  // Users self only. Dropped GET /users/{id}; use account_id for linking.
+  // Stale followers/product fields are not read.
   return {
     id: o["id"] as string,
     name:
@@ -225,9 +346,38 @@ export function parseUserProfile(raw: unknown): UserProfile | null {
         ? (o["display_name"] as string)
         : (o["id"] as string),
     image: img(o["images"]),
-    followers:
-      followers && typeof followers["total"] === "number"
-        ? (followers["total"] as number)
-        : 0,
+    accountId: typeof o["id"] === "string" ? (o["id"] as string) : "",
   };
+}
+
+export function parseSavedShows(raw: unknown): { items: LibraryItem[]; total: number } {
+  if (!raw || typeof raw !== "object") return { items: [], total: 0 };
+  const o = raw as Record<string, unknown>;
+  const list = Array.isArray(o["items"]) ? (o["items"] as Array<Record<string, unknown>>) : [];
+  const items = list
+    .map((w) => (w["show"] as Record<string, unknown> | undefined) ?? w)
+    .filter((a): a is Record<string, unknown> => !!a && typeof a["id"] === "string")
+    .map((a) => toLibraryItem(a, "Show"));
+  return { items, total: typeof o["total"] === "number" ? (o["total"] as number) : items.length };
+}
+
+export function parseSavedEpisodes(raw: unknown): { items: QueueItem[]; total: number } {
+  if (!raw || typeof raw !== "object") return { items: [], total: 0 };
+  const o = raw as Record<string, unknown>;
+  const list = Array.isArray(o["items"]) ? (o["items"] as Array<Record<string, unknown>>) : [];
+  const items = list
+    .map((w) => (w["episode"] as Record<string, unknown> | undefined) ?? w)
+    .filter((t): t is Record<string, unknown> => !!t && typeof t["uri"] === "string")
+    .map(queueItem);
+  return { items, total: typeof o["total"] === "number" ? (o["total"] as number) : items.length };
+}
+
+export function parseSavedAudiobooks(raw: unknown): { items: LibraryItem[]; total: number } {
+  if (!raw || typeof raw !== "object") return { items: [], total: 0 };
+  const o = raw as Record<string, unknown>;
+  const list = Array.isArray(o["items"]) ? (o["items"] as Array<Record<string, unknown>>) : [];
+  const items = list
+    .filter((a): a is Record<string, unknown> => !!a && typeof a["id"] === "string")
+    .map((a) => toLibraryItem(a, "Audiobook"));
+  return { items, total: typeof o["total"] === "number" ? (o["total"] as number) : items.length };
 }
